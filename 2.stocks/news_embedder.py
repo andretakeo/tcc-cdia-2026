@@ -113,7 +113,7 @@ class NewsEmbedder:
         log.info(f"  ↳ resumindo ({len(text)} chars) via '{self.summarizer_model}'...")
         t0 = time.perf_counter()
         prompt = (
-            "Resuma o texto abaixo em no máximo 3 frases, "
+            "Resuma o texto abaixo em até 1000 caracteres, mantendo os pontos mais relevantes e"
             "focando em fatos financeiros e impacto no mercado. "
             "Responda apenas com o resumo, sem introdução.\n\n"
             f"{text[:6000]}"
