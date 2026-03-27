@@ -83,8 +83,8 @@
         "Novo dataset deve ter pelo menos 3x mais amostras temporais que o original (>690 dias)"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Requer execução manual: reexecutar extractor.py com horizonte estendido, atualizar yahoo_finance, reprocessar embeddings. Notebook de extração já usa meses_atras=60 (5 anos). ITUB4 retornou 2572 artigos desde 2021. Verificar se API retorna dados mais antigos."
+      "passes": true,
+      "notes": "Dataset expandido de 230 para 1227 dias (5.3x). Período: 2021-04-28 a 2026-03-26. 2572 artigos embedados, 1115 dias únicos. Notícias desde 2021-04, preços via Yahoo Finance period=5y."
     },
     {
       "id": "US-006",
