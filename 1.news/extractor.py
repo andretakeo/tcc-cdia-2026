@@ -232,15 +232,17 @@ class ExtratorDeNoticias:
         raise RuntimeError(f"Falha apos {self.retries} tentativas: {last_error}")
 
     def extrair(self) -> list[Artigo]:
-        """Busca todas as noticias da acao dentro do periodo, usando modified_after da API."""
-        self._artigos.clear()
+        """Busca todas as noticias da acao dentro do periodo, usando modified_after da API.
+        Se já houver artigos carregados (via carregar_existentes), pula duplicatas por id."""
+        ids_existentes = {a.id for a in self._artigos}
+        novos = 0
         page = 1
 
         modified_after = self.data_inicio.strftime("%Y-%m-%dT%H:%M:%S")
 
         inicio_str = self.data_inicio.strftime("%Y-%m-%d")
         fim_str = self.data_fim.strftime("%Y-%m-%d")
-        print(f"  [{self.acao}] Extraindo de {inicio_str} ate {fim_str}")
+        print(f"  [{self.acao}] Extraindo de {inicio_str} ate {fim_str} (existentes: {len(ids_existentes)})")
 
         while True:
             params = {
@@ -271,16 +273,21 @@ class ExtratorDeNoticias:
                 if artigo.data > self.data_fim:
                     continue
 
+                if artigo.id in ids_existentes:
+                    continue
+
                 self._artigos.append(artigo)
+                ids_existentes.add(artigo.id)
+                novos += 1
 
             total_pages = int(resp.headers.get("X-WP-TotalPages", 1))
-            print(f"  [{self.acao}] Pagina {page}/{total_pages} — {len(data)} artigos (coletados: {self.total})")
+            print(f"  [{self.acao}] Pagina {page}/{total_pages} — {len(data)} artigos (novos: {novos}, total: {self.total})")
 
             if page >= total_pages:
                 break
             page += 1
 
-        print(f"  [{self.acao}] Total: {self.total} artigos no periodo")
+        print(f"  [{self.acao}] Extração concluída: {novos} novos + {len(ids_existentes) - novos} existentes = {self.total} total")
         return self.artigos
 
     def carregar_existentes(self, path: Optional[str] = None) -> int:
@@ -373,9 +380,9 @@ def extrair_varias_acoes(
             retries=retries,
             content_max_length=content_max_length,
         )
-        ext.extrair()
         if incremental:
             ext.carregar_existentes()
+        ext.extrair()
         if formato == "csv":
             ext.salvar_csv()
         else:
