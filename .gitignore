@@ -214,3 +214,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# FinBERT model weights
+4.finbert-br/FinBERT-PT-BR/
+
+# Large data files
+*_noticias.json
+*_noticias_sentiment.json
+embeddings_cache.npz
