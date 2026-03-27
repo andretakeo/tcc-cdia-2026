@@ -283,6 +283,28 @@ class ExtratorDeNoticias:
         print(f"  [{self.acao}] Total: {self.total} artigos no periodo")
         return self.artigos
 
+    def carregar_existentes(self, path: Optional[str] = None) -> int:
+        """Carrega artigos existentes de um JSON e adiciona ao buffer interno,
+        permitindo append incremental sem duplicatas (dedup por id)."""
+        path = path or f"{self.acao.lower()}_noticias.json"
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existentes = json.load(f)
+        except FileNotFoundError:
+            return 0
+
+        ids_atuais = {a.id for a in self._artigos}
+        novos = 0
+        for raw in existentes:
+            if raw["id"] not in ids_atuais:
+                artigo = Artigo(**{k: raw[k] for k in Artigo.__dataclass_fields__})
+                self._artigos.append(artigo)
+                ids_atuais.add(artigo.id)
+                novos += 1
+
+        print(f"  [{self.acao}] Carregados {len(existentes)} existentes, {novos} novos adicionados (total: {self.total})")
+        return novos
+
     def salvar_json(self, path: Optional[str] = None) -> str:
         path = path or f"{self.acao.lower()}_noticias.json"
         with open(path, "w", encoding="utf-8") as f:
@@ -331,6 +353,7 @@ def extrair_varias_acoes(
     content_max_length: Optional[int] = None,
     max_workers: int = 4,
     formato: str = "json",
+    incremental: bool = False,
 ) -> dict[str, ExtratorDeNoticias]:
     """
     Extrai notícias de múltiplas ações em paralelo usando ThreadPoolExecutor.
@@ -351,6 +374,8 @@ def extrair_varias_acoes(
             content_max_length=content_max_length,
         )
         ext.extrair()
+        if incremental:
+            ext.carregar_existentes()
         if formato == "csv":
             ext.salvar_csv()
         else:

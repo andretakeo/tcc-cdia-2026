@@ -32,7 +32,7 @@ class MarketData:
 
     def history(
         self,
-        period: str = "1y",
+        period: str = "max",
         interval: str = "1d",
         ticker: str | None = None,
     ) -> pd.DataFrame:
@@ -51,7 +51,7 @@ class MarketData:
 
     def close(
         self,
-        period: str = "1y",
+        period: str = "max",
         interval: str = "1d",
     ) -> pd.DataFrame:
         """Fechamentos ajustados de todos os tickers em colunas."""
@@ -73,7 +73,7 @@ class MarketData:
 
     def features(
         self,
-        period: str = "1y",
+        period: str = "max",
         lags: int = 5,
         ticker: str | None = None,
     ) -> pd.DataFrame:
@@ -99,7 +99,7 @@ class MarketData:
 
     def target(
         self,
-        period: str = "1y",
+        period: str = "max",
         horizon: int = 1,
         ticker: str | None = None,
     ) -> pd.Series:
