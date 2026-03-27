@@ -1,9 +1,29 @@
 """
-NewsEmbedder
+Módulo news_embedder.py — Embeddings de notícias via Ollama
 ─────────────────────────────────────────────────────────────────────────────
 Transforma notícias do InfoMoney em features de embedding diárias,
 prontas para serem concatenadas com MarketData.features() e treinar
 um modelo de previsão de séries temporais.
+
+Classe principal:
+    NewsEmbedder — gera embeddings de artigos usando o modelo Ollama
+    `qwen3-embedding:4b` (1024 dimensões por artigo).
+
+Estratégia de caching:
+    Embeddings são cacheados em `embeddings_cache.npz` (NumPy compressed).
+    A chave é o ID do artigo. Embeddings já calculados são reutilizados
+    sem nova chamada ao modelo, acelerando reexecuções.
+
+Agregação diária (_weighted_mean):
+    Quando há múltiplas notícias no mesmo dia, os embeddings são agregados
+    via média ponderada por recência: notícias mais recentes no dia recebem
+    peso maior (pesos lineares 1, 2, 3... na ordem cronológica).
+
+Alinhamento temporal (merge_with_prices):
+    Os embeddings diários são combinados com as features de preço via
+    left join na data. Para dias de mercado sem notícias publicadas,
+    aplica-se forward-fill (ffill) nos embeddings, propagando o último
+    embedding disponível.
 
 Dependências:
     pip install ollama numpy pandas

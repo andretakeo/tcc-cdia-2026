@@ -1,17 +1,33 @@
 """
-LSTM Classifier — Sobe ou Desce em 21 dias
+Módulo lstm_classifier.py — Classificador BiLSTM para previsão de direção de preços
 ─────────────────────────────────────────────────────────────────────────────
-Pipeline completo:
-  1. Prepara target binário (1 = sobe, 0 = desce/igual em 21 dias)
-  2. Reduz dimensão dos embeddings com PCA
-  3. Normaliza features
-  4. Cria janelas temporais (sequências) para o LSTM
-  5. Treina com validação walk-forward (sem data leakage)
-  6. Avalia com métricas de classificação + curva ROC
+Pipeline completo de classificação binária: prevê se o preço de uma ação
+sobe ou desce em 21 dias úteis.
+
+Etapas do pipeline (build_dataset):
+  1. Target binário: 1 = Close[t+21] > Close[t], 0 = caso contrário
+  2. PCA nos embeddings: 1024 dims → 32 componentes (~70,1% variância explicada)
+  3. Normalização: StandardScaler fitado apenas no treino (primeiros 70%)
+  4. Janelas temporais: sequências de 30 dias para entrada do LSTM
+
+Arquitetura do modelo (LSTMClassifier):
+  BiLSTM(2 camadas, 128 hidden units, 30% dropout)
+  → Dropout(0.3) → Dense(64) → ReLU → Dense(1) → Sigmoid
+
+Estratégia de treino:
+  - Otimizador: Adam (lr=0,001, weight_decay=1e-4)
+  - Loss: BCEWithLogitsLoss com pos_weight para balancear classes
+  - Early stopping: patience=10 épocas sem melhoria na val_loss
+  - Learning rate scheduler: ReduceLROnPlateau (patience=5, factor=0.5)
+  - Gradient clipping: max_norm=1.0
+
+Validação walk-forward (sem data leakage):
+  - 70% treino / 15% validação / 15% teste
+  - Split cronológico (sem shuffle), respeitando ordem temporal
+  - Scaler fitado apenas nos dados de treino
 
 Dependências:
     pip install torch scikit-learn numpy pandas matplotlib
-
 ─────────────────────────────────────────────────────────────────────────────
 """
 

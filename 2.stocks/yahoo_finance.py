@@ -1,3 +1,23 @@
+"""
+Módulo yahoo_finance.py — Dados de mercado via Yahoo Finance
+─────────────────────────────────────────────────────────────────────────────
+Encapsula a busca de dados OHLCV (Open, High, Low, Close, Volume) e a
+geração de features técnicas para modelos de previsão de preços.
+
+Dependências:
+    pip install yfinance pandas
+
+Classe principal:
+    MarketData — busca dados de mercado e gera features técnicas:
+        - Close, Volume (preço de fechamento ajustado e volume negociado)
+        - return  : retorno diário percentual
+        - ma7     : média móvel de 7 dias
+        - ma21    : média móvel de 21 dias
+        - std21   : desvio padrão de 21 dias (proxy de volatilidade)
+        - lag_1…5 : valores defasados do fechamento (1 a 5 dias)
+─────────────────────────────────────────────────────────────────────────────
+"""
+
 import yfinance as yf
 import pandas as pd
 

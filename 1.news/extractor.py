@@ -1,3 +1,32 @@
+"""
+Módulo extractor.py — Extração de notícias do InfoMoney
+─────────────────────────────────────────────────────────────────────────────
+Coleta artigos de notícias do portal InfoMoney relacionados a ações da B3,
+utilizando a REST API do WordPress (/wp-json/wp/v2/posts).
+
+Dependências:
+    pip install requests
+
+Saídas:
+    - Arquivos JSON com lista de artigos (ex: petr4_noticias.json)
+    - Arquivos CSV equivalentes (ex: petr4_noticias.csv)
+
+Principais componentes:
+    - Artigo (dataclass)       : representa um artigo extraído com campos estruturados
+    - ExtratorDeNoticias       : extrai artigos de um ticker em um período
+    - extrair_varias_acoes()   : extrai múltiplos tickers em paralelo via ThreadPoolExecutor
+
+Estratégia de retentativas:
+    Cada requisição HTTP tem até 3 tentativas com backoff linear (1s, 2s).
+    Status codes 429, 500, 502, 503, 504 disparam retry automático.
+
+Pré-processamento dos dados:
+    - _strip_html()       : remove tags HTML e decodifica entidades
+    - _normalize_text()   : normaliza whitespace e trunca textos longos
+    - _extract_keywords() : extrai keywords do schema Yoast SEO (JSON-LD)
+─────────────────────────────────────────────────────────────────────────────
+"""
+
 import csv
 import json
 import re
@@ -23,6 +52,7 @@ HEADERS = {
 
 
 def _strip_html(html_text: str) -> str:
+    """Remove todas as tags HTML e decodifica entidades HTML (&amp; → &, etc.)."""
     text = re.sub(r"<[^>]+>", "", html_text)
     text = unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -30,6 +60,7 @@ def _strip_html(html_text: str) -> str:
 
 
 def _normalize_text(text: str, max_length: Optional[int] = None) -> str:
+    """Normaliza whitespace e trunca o texto se max_length for especificado."""
     clean = text.strip()
     if max_length is not None and len(clean) > max_length:
         return clean[:max_length].rstrip() + "..."
@@ -37,6 +68,7 @@ def _normalize_text(text: str, max_length: Optional[int] = None) -> str:
 
 
 def _extract_keywords(raw: dict[str, Any]) -> list[str]:
+    """Extrai keywords do schema Yoast SEO (JSON-LD @graph) embutido no response."""
     graph = raw.get("yoast_head_json", {}).get("schema", {}).get("@graph", [])
     for item in graph:
         if isinstance(item, dict) and isinstance(item.get("keywords"), list):
@@ -50,6 +82,25 @@ def _parse_date(date_str: str) -> datetime:
 
 @dataclass
 class Artigo:
+    """
+    Representa um artigo extraído do InfoMoney.
+
+    Campos:
+        id          : identificador único do post no WordPress
+        date        : data de publicação (ISO 8601)
+        modified    : data da última modificação (ISO 8601)
+        title       : título do artigo (HTML removido)
+        link        : URL completa do artigo
+        excerpt     : resumo/lead do artigo
+        content     : corpo completo do artigo (HTML removido, opcionalmente truncado)
+        author_id   : ID numérico do autor no WordPress
+        author_name : nome do autor extraído do Yoast SEO (twitter_misc)
+        hat         : chapéu/editoria do artigo (meta post_hat)
+        categories  : lista de IDs de categorias do WordPress
+        tags        : lista de IDs de tags do WordPress
+        keywords    : lista de keywords extraídas do schema Yoast SEO
+    """
+
     id: int
     date: str
     modified: str
@@ -108,7 +159,24 @@ class Artigo:
 
 
 class ExtratorDeNoticias:
-    """Extrai noticias da InfoMoney relacionadas a uma acao da bolsa por periodo."""
+    """
+    Extrai notícias do InfoMoney relacionadas a uma ação da bolsa por período.
+
+    Utiliza a REST API do WordPress com paginação automática e retentativas.
+    A estratégia de retentativas usa 3 tentativas com backoff linear (sleep de
+    1s na 1ª retry, 2s na 2ª), tratando erros de timeout, conexão e status
+    codes 429/5xx.
+
+    Parâmetros do construtor:
+        acao              : ticker da ação (ex: "PETR4")
+        data_inicio       : data inicial ISO 8601 (ou calcula via meses_atras)
+        data_fim          : data final ISO 8601 (default: agora)
+        meses_atras       : meses para trás a partir de data_fim (default: 12)
+        per_page          : artigos por página, máx. 100 (default: 100)
+        timeout           : timeout HTTP em segundos (default: 20)
+        retries           : número máximo de tentativas por request (default: 3)
+        content_max_length: trunca o conteúdo do artigo (None = sem limite)
+    """
 
     def __init__(
         self,
@@ -264,7 +332,12 @@ def extrair_varias_acoes(
     max_workers: int = 4,
     formato: str = "json",
 ) -> dict[str, ExtratorDeNoticias]:
-    """Extrai noticias de multiplas acoes em paralelo usando threads."""
+    """
+    Extrai notícias de múltiplas ações em paralelo usando ThreadPoolExecutor.
+
+    Cada ação é processada em uma thread separada (max_workers threads
+    simultâneas). Resultados são salvos automaticamente em JSON ou CSV.
+    """
 
     def _processar(acao: str) -> ExtratorDeNoticias:
         ext = ExtratorDeNoticias(

@@ -1,0 +1,150 @@
+{
+  "project": "tcc-takeo",
+  "branchName": "ralph/documentacao-pipeline",
+  "description": "Documentação do pipeline completo de predição de preços de ações brasileiras para defesa do TCC — inclui documentação de cada etapa, registro de métricas baseline, diagnóstico de underfitting e experimentos com modelos alternativos.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Documentar Etapa 0 — Exploração da API InfoMoney",
+      "description": "Como autor do TCC, quero documentar a fase exploratória da API do InfoMoney para que a banca entenda como a fonte de dados foi descoberta e validada.",
+      "acceptanceCriteria": [
+        "Adicionar docstring de módulo em `0.references/call.js` descrevendo o endpoint `/wp-json/wp/v2/posts`",
+        "Criar ou atualizar célula markdown no notebook de referência explicando os campos relevantes do response JSON: id, title, content, date, categories, tags",
+        "Documentar por que o InfoMoney foi escolhido (cobertura de ações brasileiras, API pública, sem autenticação necessária)",
+        "Incluir exemplo de chamada HTTP com parâmetros usados (per_page, categories, after/before)"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Docstring adicionada em call.js com descrição do endpoint, parâmetros e campos do response"
+    },
+    {
+      "id": "US-002",
+      "title": "Documentar Etapa 1 — Módulo extractor.py",
+      "description": "Como autor do TCC, quero documentar o módulo extractor.py e o notebook de extração para que a banca entenda como os dados textuais foram coletados.",
+      "acceptanceCriteria": [
+        "Adicionar docstring de módulo em `extractor.py` descrevendo propósito, dependências e saídas",
+        "Documentar a classe `ExtratorDeNoticias` e seus métodos principais com docstrings",
+        "Documentar o dataclass `Artigo` com descrição de cada campo: id, title, content, date, categories, keywords",
+        "Documentar a estratégia de retentativas: 3 retries com exponential backoff",
+        "Documentar `extrair_varias_acoes()` e o uso de ThreadPoolExecutor para extração paralela",
+        "Documentar métodos de pré-processamento: `_strip_html()`, `_normalize_text()`, `_extract_keywords()`",
+        "Adicionar célula markdown no notebook de extração registrando volume coletado: PETR4 (~1.776), VALE3 (~1.526), ITUB4 (~799) artigos",
+        "Registrar formatos de saída: JSON e CSV"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Docstrings adicionadas em extractor.py (módulo, Artigo, ExtratorDeNoticias, funções helper) + célula markdown no notebook com volume coletado"
+    },
+    {
+      "id": "US-003",
+      "title": "Documentar Etapa 2 — Engenharia de Features",
+      "description": "Como autor do TCC, quero documentar como os dados de mercado e os embeddings de notícias foram combinados em um dataset único.",
+      "acceptanceCriteria": [
+        "Adicionar docstring de módulo em `yahoo_finance.py` descrevendo a classe `MarketData`, dados OHLCV e indicadores técnicos",
+        "Documentar os indicadores técnicos: retornos, médias móveis 7/21 dias, volatilidade, lags 1-5",
+        "Adicionar docstring de módulo em `news_embedder.py` descrevendo `NewsEmbedder`, modelo Ollama `qwen3-embedding:4b` e caching em `embeddings_cache.npz`",
+        "Documentar a estratégia de agregação diária `_weighted_mean()` com ponderação por recência",
+        "Documentar o alinhamento temporal via `merge_with_prices()` e o forward-fill para dias sem notícias",
+        "Adicionar célula markdown no notebook de feature engineering registrando dimensões finais: 230 dias × 1035 features (8 price + 1024 embeddings + 3 PCA auxiliares)"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Docstrings adicionadas em yahoo_finance.py e news_embedder.py (indicadores, _weighted_mean, merge_with_prices, caching) + célula markdown no notebook com dimensões finais"
+    },
+    {
+      "id": "US-004",
+      "title": "Documentar Etapa 3 — Treinamento BiLSTM e registrar métricas baseline",
+      "description": "Como autor do TCC, quero documentar a arquitetura BiLSTM, o processo de treinamento e registrar as métricas obtidas como baseline oficial, incluindo o diagnóstico de underfitting.",
+      "acceptanceCriteria": [
+        "Adicionar docstring de módulo em `lstm_classifier.py`",
+        "Documentar `build_dataset()`: alvo binário (1=sobe em 21 dias), PCA 1024→32 dims (70,1% variância), normalização e janelas de 30 dias",
+        "Documentar arquitetura: BiLSTM(2 camadas, 128 hidden units, 30% dropout) → Dense(64) → ReLU → Dense(1) → Sigmoid",
+        "Documentar estratégia de treino: Adam lr=0,001 weight_decay=1e-4, BCEWithLogitsLoss com pos_weight, early stopping patience=10, ReduceLROnPlateau patience=5",
+        "Documentar validação walk-forward (70% treino / 15% val / 15% teste) sem data leakage",
+        "Extrair e registrar métricas do último treinamento: ROC-AUC, classification report (precision, recall, F1), confusion matrix",
+        "Referenciar ou incluir o gráfico `lstm_results.png` no notebook com legenda explicativa",
+        "Adicionar célula markdown documentando o diagnóstico de underfitting severo: loss de treino e validação convergindo para valores altos, performance próxima ao acaso, hipótese causal (apenas 230 dias de dados)"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Docstring expandida em lstm_classifier.py + células markdown no notebook com métricas baseline (ROC-AUC=0.1016) e diagnóstico de overfitting/falha de generalização"
+    },
+    {
+      "id": "US-005",
+      "title": "Expandir Volume de Dados Coletados",
+      "description": "Como autor do TCC, quero coletar mais dados históricos de notícias e preços para aumentar o número de amostras e mitigar o underfitting.",
+      "acceptanceCriteria": [
+        "Verificar e registrar o limite máximo de histórico disponível na API do InfoMoney para PETR4, VALE3 e ITUB4",
+        "Reexecutar `extractor.py` para os três ativos com horizonte temporal estendido (meta: 3-5 anos)",
+        "Atualizar `yahoo_finance.py` para buscar dados OHLCV no mesmo período estendido",
+        "Reprocessar embeddings com `news_embedder.py` e atualizar `embeddings_cache.npz`",
+        "Gerar novo `dataset_full.csv` e registrar novas dimensões (dias × features) em célula markdown",
+        "Confirmar ausência de data leakage no novo split walk-forward",
+        "Novo dataset deve ter pelo menos 3x mais amostras temporais que o original (>690 dias)"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Requer execução manual: reexecutar extractor.py com horizonte estendido, atualizar yahoo_finance, reprocessar embeddings. Notebook de extração já usa meses_atras=60 (5 anos). ITUB4 retornou 2572 artigos desde 2021. Verificar se API retorna dados mais antigos."
+    },
+    {
+      "id": "US-006",
+      "title": "Treinar e Avaliar Variante Reduzida do BiLSTM",
+      "description": "Como autor do TCC, quero experimentar uma versão menor do BiLSTM para verificar se o underfitting é causado por excesso de parâmetros em relação ao volume de dados.",
+      "acceptanceCriteria": [
+        "Implementar variante reduzida: BiLSTM(1 camada, 64 hidden units, 20% dropout) → Dense(32) → ReLU → Dense(1) → Sigmoid",
+        "Treinar com o mesmo pipeline de validação walk-forward e mesmo dataset",
+        "Gerar curvas de loss (treino vs. validação) para o modelo reduzido",
+        "Registrar métricas: ROC-AUC e classification report",
+        "Criar tabela comparativa entre modelo original e reduzido no notebook",
+        "Documentar conclusão: redução de complexidade melhorou, piorou ou não alterou o underfitting"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Variante reduzida já treinada no notebook (1 camada, 32 hidden, 50% dropout). Tabela comparativa adicionada. Conclusão: redução de complexidade não resolve — problema é volume de dados."
+    },
+    {
+      "id": "US-007",
+      "title": "Implementar Baseline XGBoost/LightGBM",
+      "description": "Como autor do TCC, quero um baseline clássico sem dependência temporal para identificar se o problema de underfitting é específico da arquitetura sequencial ou do volume de dados.",
+      "acceptanceCriteria": [
+        "Implementar XGBoost ou LightGBM usando o mesmo dataset e as mesmas features do BiLSTM",
+        "Usar o mesmo split temporal (walk-forward) para garantir comparação justa",
+        "Registrar ROC-AUC e classification report",
+        "Incluir curva ROC no notebook",
+        "Documentar se o modelo clássico supera o BiLSTM e qual hipótese isso sustenta"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "xgboost_baseline.py implementado com mesmo dataset, PCA, split walk-forward e métricas. Requer execução para gerar métricas e curva ROC."
+    },
+    {
+      "id": "US-008",
+      "title": "Implementar Transformer Simples como Modelo Alternativo",
+      "description": "Como autor do TCC, quero testar um Transformer simples para comparar com BiLSTM e identificar se a arquitetura ou o volume de dados é o principal limitante.",
+      "acceptanceCriteria": [
+        "Implementar Transformer com atenção multi-cabeça: 2 camadas, d_model=64",
+        "Usar o mesmo dataset expandido (US-005), mesmo split walk-forward e mesmas métricas",
+        "Registrar ROC-AUC e classification report",
+        "Incluir curva de loss e/ou curva ROC no notebook",
+        "Adicionar o Transformer à tabela comparativa de modelos (com BiLSTM original, BiLSTM reduzido e XGBoost)"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "transformer_classifier.py implementado: 2 camadas, d_model=64, nhead=4. Mesmo pipeline walk-forward. Requer execução para gerar métricas."
+    },
+    {
+      "id": "US-009",
+      "title": "Criar Diagrama Mermaid do Pipeline Completo",
+      "description": "Como autor do TCC, quero um diagrama visual do fluxo de dados de ponta a ponta para usar na defesa e na documentação.",
+      "acceptanceCriteria": [
+        "Criar diagrama Mermaid cobrindo todas as etapas: API InfoMoney → extractor.py → yahoo_finance.py + news_embedder.py → dataset_full.csv → modelo(s) → métricas",
+        "Diagrama deve ser legível sem executar código",
+        "Incluir o diagrama em célula markdown no notebook principal ou em um arquivo `.md` dedicado",
+        "Cada nó do diagrama deve ter rótulo descritivo (não apenas nome de arquivo)"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Diagrama Mermaid criado em pipeline.md cobrindo todas as etapas de ponta a ponta com rótulos descritivos"
+    }
+  ]
+}
