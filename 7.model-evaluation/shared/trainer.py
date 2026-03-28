@@ -109,8 +109,7 @@ def _train_pytorch_model(model, X_seq, y, n_train, n_val, lr=1e-3, weight_decay=
             for xb, yb in val_dl:
                 xb, yb = xb.to(device), yb.to(device)
                 pred = model(xb)
-                sample_weights = torch.where(yb == 1, weight_pos, weight_neg)
-                sample_weights = torch.tensor(sample_weights, dtype=torch.float32).to(device)
+                sample_weights = torch.where(yb == 1, weight_pos, weight_neg).to(device)
                 val_loss += nn.BCELoss(weight=sample_weights)(pred, yb).item()
                 correct += ((pred > 0.5) == yb).sum().item()
                 total += len(yb)
