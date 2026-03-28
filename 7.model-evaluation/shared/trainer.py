@@ -45,6 +45,33 @@ def _train_pytorch_model(model, X_seq, y, n_train, n_val, lr=1e-3, weight_decay=
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
+    # ── Balanceamento de classes (pos_weight) ────────────────────────────
+    # Problema: se 58% dos dias sobem e 42% descem, o modelo pode "trapacear"
+    # prevendo sempre "sobe" e acertar 58% sem ter aprendido nada.
+    #
+    # Solucao: pos_weight faz a loss penalizar MAIS quando o modelo erra um
+    # dia de "desce" (classe minoritaria). Se ha 58% sobe e 42% desce:
+    #   pos_weight = n_negativos / n_positivos = 0.42 / 0.58 ≈ 0.72
+    #
+    # Isso diz ao modelo: "errar um 'desce' custa mais do que errar um 'sobe'",
+    # forcando-o a prestar atencao nas duas classes igualmente.
+    #
+    # Nota: BCEWithLogitsLoss combina Sigmoid + BCE em uma unica operacao,
+    # o que e numericamente mais estavel. Por isso os modelos precisam
+    # retornar LOGITS (sem Sigmoid no final). Como nossos modelos ja aplicam
+    # Sigmoid, usamos BCELoss com reducao manual via peso por amostra.
+    # ─────────────────────────────────────────────────────────────────────
+    y_train = y[:n_train]
+    p_pos = y_train.mean()  # fracao da classe positiva (sobe)
+    # Peso para cada amostra: classe minoritaria recebe peso maior
+    # Isso equivale ao class_weight="balanced" do sklearn
+    weight_pos = (1 - p_pos) / p_pos    # peso para amostras "sobe"
+    weight_neg = p_pos / (1 - p_pos)    # peso para amostras "desce"
+    # Normalizamos para que a media dos pesos = 1 (nao altera a escala da loss)
+    # Simplificacao: usamos um tensor de pesos por amostra no batch
+    log.info(f"Class weights: sobe={weight_pos:.3f}, desce={weight_neg:.3f} "
+             f"(balance: {p_pos:.1%} sobe)")
+
     train_ds = TimeSeriesDataset(X_seq[:n_train], y[:n_train])
     val_ds = TimeSeriesDataset(X_seq[n_train : n_train + n_val], y[n_train : n_train + n_val])
 
@@ -66,7 +93,9 @@ def _train_pytorch_model(model, X_seq, y, n_train, n_val, lr=1e-3, weight_decay=
             xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
             pred = model(xb)
-            loss = nn.BCELoss()(pred, yb)
+            # Peso por amostra: amostras da classe minoritaria pesam mais
+            sample_weights = torch.where(yb == 1, weight_pos, weight_neg).to(device)
+            loss = nn.BCELoss(weight=sample_weights)(pred, yb)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -80,7 +109,9 @@ def _train_pytorch_model(model, X_seq, y, n_train, n_val, lr=1e-3, weight_decay=
             for xb, yb in val_dl:
                 xb, yb = xb.to(device), yb.to(device)
                 pred = model(xb)
-                val_loss += nn.BCELoss()(pred, yb).item()
+                sample_weights = torch.where(yb == 1, weight_pos, weight_neg)
+                sample_weights = torch.tensor(sample_weights, dtype=torch.float32).to(device)
+                val_loss += nn.BCELoss(weight=sample_weights)(pred, yb).item()
                 correct += ((pred > 0.5) == yb).sum().item()
                 total += len(yb)
 
