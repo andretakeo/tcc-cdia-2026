@@ -2,9 +2,11 @@
 
 ## 5.1 Motivação
 
-Os Capítulos 3 e 4 apresentaram um resultado central: um modelo Transformer treinado com features de sentimento financeiro específico (FinBERT-PT-BR) atingiu ROC-AUC = 0.709 e acurácia de 76.3% na previsão de direção de preços do ITUB4 em horizonte de 21 dias úteis, superando todos os demais modelos e configurações testadas. Este resultado foi obtido sob um protocolo de avaliação padrão na literatura de aprendizado de máquina aplicado a finanças: **walk-forward split único**, com divisão cronológica 70% treino / 15% validação / 15% teste.
+O que significa, de fato, afirmar que um modelo de *machine learning* "funciona" para predição de direção de preços? Uma métrica pontual como ROC-AUC = 0.709, reportada sobre um único conjunto de teste, responde a essa pergunta apenas parcialmente: ela descreve o desempenho do modelo em *uma amostra particular*, sob *uma semente particular*, sob *uma única divisão temporal* dos dados. Em séries financeiras, onde a não-estacionariedade é a regra e o volume de dados é tipicamente pequeno em relação à capacidade dos modelos modernos, esta descrição pode ser enganosa em grau suficiente para inverter a conclusão qualitativa do estudo.
 
-Este capítulo investiga se esse resultado é **reproduzível**, **robusto** e **metodologicamente confiável**. A investigação é motivada por três observações preocupantes:
+Este capítulo é um estudo de caso dessa inversão. Ele parte do resultado apresentado nos Capítulos 3 e 4 — um Transformer treinado com *features* de sentimento FinBERT-PT-BR atingindo ROC-AUC = 0.709 e acurácia de 76.3% na previsão de direção do ITUB4 em horizonte de 21 dias — e aplica um conjunto progressivamente mais rigoroso de protocolos de avaliação para determinar se o resultado sobrevive a escrutínio metodológico. O protocolo original utilizado nos capítulos anteriores é o padrão da literatura: *walk-forward split* único com divisão cronológica 70% treino / 15% validação / 15% teste.
+
+Três observações sobre o resultado original justificam a investigação:
 
 1. A matriz de confusão do Transformer-FinBERT indica `precision(Desce)=1.00` mas `recall(Desce)=0.20` — o modelo prevê "Desce" apenas 11 vezes em 177 amostras de teste. Em 166 das 177 amostras, prevê "Sobe". Esta é uma distribuição de predições altamente degenerada, próxima de um classificador que sempre prevê a classe majoritária.
 
@@ -12,7 +14,7 @@ Este capítulo investiga se esse resultado é **reproduzível**, **robusto** e *
 
 3. Não foram reportados intervalos de confiança, nem resultados de múltiplas sementes aleatórias, nem comparação contra um *baseline* autoregressivo trivial. A ausência destes controles é comum na literatura mas deixa o resultado aberto a questionamento.
 
-Este capítulo documenta uma sequência de seis experimentos desenhados para responder à pergunta: **o resultado original é real, ou é um artefato da metodologia de avaliação?** A conclusão, que é o achado metodológico central desta dissertação, inverte o diagnóstico original: sob avaliação rigorosa, o Transformer-FinBERT não supera um *baseline* autoregressivo trivial em nenhum dos três ativos testados (ITUB4, PETR4, VALE3), e o resultado de AUC = 0.709 é explicado por uma combinação de variância de semente, colapso bimodal da arquitetura e viés de sampling em janela única.
+A sequência de oito experimentos documentada aqui responde à pergunta **o resultado original é reproduzível e confiável sob avaliação rigorosa?** A resposta, antecipada aqui para transparência do leitor, é negativa: sob validação cruzada *expanding-window* com múltiplas sementes e intervalos de confiança, o Transformer-FinBERT não supera um *baseline* XGBoost de cinco *features* autoregressivas de preço em nenhum dos três ativos testados (ITUB4, PETR4, VALE3), e o AUC = 0.709 originalmente reportado é mostrado como um artefato de amostragem de janela única combinado com colapso bimodal da arquitetura. Esta inversão do diagnóstico original é o achado metodológico central da dissertação e motiva o reposicionamento da contribuição discutido na Seção 5.12.
 
 ## 5.2 Protocolo geral dos experimentos
 
@@ -29,8 +31,9 @@ O código e os resultados numéricos completos de cada experimento estão em `9.
 | 5.7 — Ensemble + backtest | `ensemble_backtest.ipynb` | 20 |
 | 5.8 — Expanding-window CV | `expanding_window_cv.ipynb` | 145 |
 | 5.9 — VALE3 deep-dive | `vale3_deepdive.ipynb` | 880 |
+| 5.10 — Ablation PRICE / SENT / PRICE+SENT | `ablation_price_vs_sentiment.ipynb` | 225 |
 
-Total: **1.210 treinamentos de modelo**, cobrindo 3 ativos, 20 sementes por experimento quando aplicável, até 52 janelas de teste por ativo.
+Total: **1.435 treinamentos de modelo**, cobrindo 3 ativos, até 20 sementes por experimento, e até 52 janelas de teste por ativo.
 
 Os utilitários reusáveis (split walk-forward, bootstrap CI, geração de alvo binário) estão em `9.baselines/eval_utils.py`.
 
@@ -90,11 +93,7 @@ O *scatter plot* de AUC contra número de *down calls* (ver `multi_seed_tradeoff
 | **PETR4** | −0.030 | 0.587 | **0.334** | **−0.253** |
 | **VALE3** | +0.342 | 0.679 | **0.992** | **+0.313** |
 
-Este resultado parecia, à primeira leitura, apoiar uma hipótese de viés de *class-prior*: o AUC do Transformer correlacionaria-se com o quanto a proporção da classe majoritária varia entre treino e teste. Em VALE3, a proporção de dias "Sobe" aumenta drasticamente de 48% (treino) para 82% (teste); em PETR4, essa proporção praticamente não varia; e os AUCs do Transformer refletem exatamente essa ordenação.
-
-Contudo, esta hipótese foi **falsificada** pelo experimento 5.8 a seguir: sob avaliação multi-fold, a correlação entre *shift* de balance e AUC desaparece. O fenômeno real é mais simples: o *baseline* tem comportamento estável e discriminativo nos três ativos (~0.59–0.68), enquanto o Transformer colapsa em configurações degeneradas cujo AUC depende principalmente da sorte da janela de teste selecionada.
-
-**Interpretação.** O achado de ITUB4 não é específico ao setor bancário — é específico a uma combinação de arquitetura (Transformer com 16 features em ~800 amostras de treino) e protocolo de avaliação (janela única). Em PETR4, onde a janela de teste não beneficia acidentalmente o colapso do modelo, o AUC despenca para 0.334. Em VALE3, onde a janela de teste amplifica o colapso, o AUC sobe artificialmente para 0.992.
+**Interpretação.** O achado de ITUB4 não é específico ao setor bancário — é específico à combinação de arquitetura (Transformer com 16 features em ~800 amostras de treino) e protocolo de avaliação (janela única). O *baseline* tem comportamento estável e razoavelmente discriminativo nos três ativos (~0.59–0.68), enquanto o Transformer oscila entre 0.33 e 0.99 dependendo exclusivamente do ativo. Esta diferença de 0.66 pontos de AUC para o mesmo modelo, treinado com o mesmo código, sobre a mesma arquitetura, é grande demais para ser atribuída a propriedades intrínsecas dos ativos. A origem do fenômeno é investigada em detalhe pelo experimento 5.8 (avaliação *multi-fold*) e pelo experimento 5.9 (*deep-dive* em VALE3).
 
 ## 5.7 Experimento 5 — Ensemble e backtest: o sinal se traduz em valor prático?
 
@@ -182,27 +181,72 @@ Com uma amostra 8× maior que no experimento 5.8, o sinal de VALE3 **inverte**: 
 
 A existência de centenas de execuções com AUC ≥ 0.9 em VALE3 é o que permite que avaliações de janela única ocasionalmente reportem AUCs altos — mas estas são, estatisticamente, coincidências estruturais, não capacidade preditiva.
 
-## 5.10 Síntese dos achados
+## 5.10 Experimento 8 — Ablation: o sentimento adiciona algo, sob protocolo correto?
 
-Os sete experimentos deste capítulo estabelecem uma sequência lógica de descobertas:
+**Pergunta.** Os experimentos 5.3 a 5.9 estabeleceram que o Transformer-FinBERT (16 *features* combinadas) não supera o *baseline* XGBoost (5 *features* de preço). Mas resta uma pergunta separada e mais focada: **se isolarmos a contribuição incremental do sentimento, sob o mesmo modelo (XGBoost) e o mesmo protocolo (CV *expanding-window*), o sentimento adiciona algum sinal mensurável?** Esta é a versão metodologicamente correta da comparação Etapa 3 vs Etapa 4 dos capítulos anteriores.
+
+**Protocolo.** Treinar o XGBoost (mesma configuração de 5.3 e 5.8) em três configurações de *features*, cada uma sob *expanding-window CV* com 5 *folds* e 5 *seeds* nos 3 ativos:
+
+| Configuração | Features | Dim |
+|---|---|---:|
+| **PRICE** | `return`, `lag_1`, `lag_5`, `Volume`, `std21` | 5 |
+| **SENT** | `n_articles`, `mean_logit_pos`, `mean_logit_neg`, `mean_logit_neu`, `mean_sentiment` | 5 |
+| **PRICE+SENT** | união das duas | 10 |
+
+Total: 3 ativos × 5 *folds* × 5 sementes × 3 configurações = **225 treinamentos**. A comparação chave é PRICE+SENT vs PRICE, com teste de Wilcoxon *signed-rank* pareado e intervalo de confiança *bootstrap* sobre o delta médio.
+
+**Resultado.** Médias de AUC sobre todos os *folds* e sementes:
+
+| Ativo | PRICE | SENT | PRICE+SENT | Δ (P+S − P) |
+|---|---:|---:|---:|---:|
+| **ITUB4** | 0.684 | 0.436 | 0.651 | **−0.033** |
+| **PETR4** | 0.692 | 0.494 | 0.676 | **−0.016** |
+| **VALE3** | 0.609 | 0.510 | 0.667 | **+0.058** |
+| **Média global** | **0.662** | **0.480** | **0.665** | **+0.003** |
+
+Estatística pareada PRICE+SENT vs PRICE sobre 75 pares (3 ativos × 5 *folds* × 5 sementes):
+
+- Δ médio = **+0.003**
+- Pares onde PRICE+SENT > PRICE: **32 / 75 (43%)**
+- Wilcoxon *signed-rank* p-value = **0.4941**
+- *Bootstrap* 95% CI sobre Δ médio: **[−0.012, +0.018]**
+- CI contém zero? **Sim**
+
+**Interpretação.** Os três achados deste experimento são, individualmente e em conjunto, conclusivos:
+
+1. **O sentimento sozinho (SENT) opera abaixo do acaso** em todos os três ativos (média 0.480), o que indica que as cinco *features* derivadas do FinBERT-PT-BR — média dos *logits* positivo/negativo/neutro, classe média e contagem de artigos — não contêm sinal direcional preditivo no horizonte de 21 dias úteis. A média ligeiramente abaixo de 0.5 é compatível com ruído estatístico em torno do acaso.
+
+2. **A combinação PRICE+SENT é estatisticamente indistinguível de PRICE sozinho.** O ganho médio de 0.003 pontos de AUC está bem dentro do intervalo de confiança *bootstrap*, é não-significativo no teste de Wilcoxon (p ≈ 0.49), e o sentimento "vence" em apenas 43% dos pares — pior que coin-flip.
+
+3. **A direção do efeito é heterogênea entre ativos**: PRICE+SENT é *pior* que PRICE em ITUB4 (−0.033) e PETR4 (−0.016), e melhor em VALE3 (+0.058). A média se cancela. Esta heterogeneidade *poderia* ser interpretada como "o sentimento ajuda em mineração mas atrapalha em bancos", mas dado o tamanho amostral (25 *runs* por célula) e a magnitude dos efeitos (todos ≤ 0.06), a interpretação correta é ruído amostral.
+
+A conclusão fecha definitivamente a investigação metodológica deste capítulo: **as features de sentimento FinBERT-PT-BR utilizadas neste estudo não adicionam sinal preditivo mensurável a um *baseline* autoregressivo simples, sob avaliação metodologicamente correta**. A aparente superioridade observada nos Capítulos 3 e 4 (Δ = 0.099 entre Etapas 3 e 4 com o Transformer) é totalmente explicada por (a) variância de avaliação por janela única e (b) propriedades de colapso bimodal do Transformer, não por contribuição informacional do sentimento.
+
+Esta conclusão deve ser interpretada com cuidado: ela **não** afirma que sentimento de notícias financeiras seja, em geral, irrelevante para previsão de preços. Afirma apenas que (i) a representação específica adotada (5 *features* agregadas diariamente, derivadas do FinBERT-PT-BR), (ii) o horizonte específico (21 dias úteis) e (iii) os ativos específicos (3 *large caps* brasileiros) não exibem ganho preditivo mensurável quando comparados rigorosamente contra um *baseline* trivial. Outras representações, horizontes ou ativos podem produzir resultados diferentes — esta é uma das direções de trabalho futuro discutidas em 5.13.
+
+## 5.11 Síntese dos achados
+
+Os oito experimentos deste capítulo estabelecem uma sequência lógica de descobertas:
 
 1. **(5.3–5.4)** O AUC = 0.709 original é acompanhado por uma matriz de confusão degenerada, não foi reportado com intervalo de confiança, e não é reproduzível sob mudança de semente.
 
 2. **(5.5)** Sob 20 sementes diferentes em ITUB4, o mesmo modelo produz AUCs entre 0.08 e 0.93. A variância é explicada por colapso bimodal da arquitetura em dois estados degenerados.
 
-3. **(5.6)** Os AUCs variam drasticamente entre ativos (PETR4 = 0.33, VALE3 = 0.99) sob avaliação de janela única, sugerindo inicialmente que o efeito é de *class-prior shift*. Esta hipótese é depois rejeitada em 5.8.
+3. **(5.6)** Os AUCs variam drasticamente entre ativos (PETR4 = 0.33, VALE3 = 0.99) sob avaliação de janela única.
 
 4. **(5.7)** Um *ensemble* das sementes selecionadas por validação honesta gera uma estratégia *long/flat* que perde decisivamente para *buy-and-hold* (Sharpe −1.29 vs 3.25). Além disso, a correlação entre AUC de validação e AUC de teste é **negativa**.
 
 5. **(5.8)** Sob validação cruzada *expanding-window* multi-fold, o dumb baseline vence o Transformer-FinBERT em 2 dos 3 ativos por 0.25 pontos de AUC, e a média global sobre todos os ativos é 0.667 (baseline) vs 0.509 (Transformer).
 
-6. **(5.9)** O único caso aparentemente remanescente (VALE3) desaparece sob amostragem mais fina: com 880 execuções, a diferença não é estatisticamente significativa, e o Transformer apresenta a distribuição bimodal característica de classificador degenerado.
+6. **(5.9)** O único caso aparentemente remanescente (VALE3) desaparece sob amostragem mais fina: com 880 execuções, a diferença não é estatisticamente significativa (Wilcoxon p = 0.194), e o Transformer apresenta a distribuição bimodal característica de classificador degenerado.
+
+7. **(5.10)** Quando isolado em uma *ablation* formal sob CV multi-fold (XGBoost com PRICE / SENT / PRICE+SENT), as *features* de sentimento adicionam Δ médio = +0.003 ao *baseline* de preço (Wilcoxon p = 0.49, *bootstrap* CI [−0.012, +0.018] contém zero). Sentimento sozinho opera abaixo do acaso (AUC médio 0.480).
 
 A conclusão unificada é inescapável:
 
-> **Sob avaliação metodologicamente correta (multi-fold, multi-sementes, com intervalos de confiança), o Transformer treinado com *features* de sentimento FinBERT-PT-BR não supera um *baseline* XGBoost de 5 *features* autoregressivas de preço em nenhum dos três ativos brasileiros de grande capitalização testados. O resultado original de AUC = 0.709 em ITUB4 é um artefato da avaliação por janela única — uma combinação de variância de semente, viés de amostragem da janela de teste e colapso bimodal da arquitetura.**
+> **Sob avaliação metodologicamente correta (multi-fold, multi-sementes, com intervalos de confiança e *ablation* de *features*), as *features* de sentimento FinBERT-PT-BR utilizadas neste estudo não adicionam sinal preditivo mensurável a um *baseline* autoregressivo de cinco *features* de preço, em nenhum dos três ativos brasileiros de grande capitalização testados. O resultado original de AUC = 0.709 em ITUB4 é um artefato da avaliação por janela única — uma combinação de variância de semente, viés de amostragem da janela de teste e colapso bimodal da arquitetura.**
 
-## 5.11 Implicações metodológicas para pesquisa em ML financeiro
+## 5.12 Implicações metodológicas para pesquisa em ML financeiro
 
 Os achados deste capítulo generalizam além do caso específico FinBERT-PT-BR / ITUB4. Eles sugerem que muitos resultados publicados na literatura de *deep learning* aplicado à predição de direção de preços podem sofrer dos mesmos problemas, e que a comunidade deveria adotar os seguintes protocolos mínimos:
 
@@ -218,20 +262,20 @@ Os achados deste capítulo generalizam além do caso específico FinBERT-PT-BR /
 
 6. **Auditar a correlação entre AUC de validação e AUC de teste.** Correlações negativas ou nulas indicam *non-stationarity* severa entre as janelas, situação em que seleção de modelo tradicional é inviável.
 
-## 5.12 Contribuição reposicionada da dissertação
+## 5.13 Reposicionamento da contribuição da dissertação
 
-À luz dos achados deste capítulo, a contribuição central da dissertação deixa de ser **"propor um modelo de predição de preços baseado em sentimento"** e passa a ser **"demonstrar empiricamente que avaliação por janela única em ML financeiro pode produzir conclusões diametralmente opostas à avaliação rigorosa, e propor um protocolo corrigido"**.
+À luz dos achados deste capítulo, propõe-se que a contribuição central da dissertação seja reposicionada: ao invés de apresentar um modelo de predição de direção de preços baseado em sentimento como resultado principal, a dissertação pode ser lida como uma investigação empírica sobre os limites da avaliação por janela única em *machine learning* aplicado a séries financeiras, usando o caso FinBERT-PT-BR / ITUB4 como estudo de caso. Nesta leitura, o *pipeline* construído nos Capítulos 1 a 4 permanece íntegro como artefato técnico — coleta de notícias, *embeddings*, extração de sentimento, engenharia de *features* e treinamento inicial — mas a interpretação dos resultados que ele produz é substancialmente revisada pelos achados do Capítulo 5.
 
-Esta reformulação é considerada mais sólida cientificamente pelas seguintes razões:
+Os argumentos a favor deste reposicionamento incluem:
 
-- A evidência é baseada em 1.210 execuções de modelos, em 3 ativos, sob múltiplos protocolos de avaliação, com estatística formal (Wilcoxon, *bootstrap CI*).
-- O achado é replicável por qualquer pesquisador que rode os *notebooks* em `9.baselines/`.
-- A conclusão é qualitativamente distinta da literatura prévia e não depende de um resultado marginal — a inversão de 0.709 para 0.50 é enorme.
-- Os protocolos corrigidos são aplicáveis a qualquer trabalho futuro na área.
+- A evidência experimental é baseada em 1.435 execuções de modelos, cobrindo 3 ativos, sob seis protocolos de avaliação distintos (janela única, bootstrap CI, multi-seed, *expanding-window CV*, *deep-dive* multi-fold, *ablation* de *features*), com suporte estatístico formal (Wilcoxon *signed-rank*, intervalos de confiança *bootstrap*). A robustez empírica é alta.
+- Os resultados são replicáveis: todos os *notebooks*, dados agregados e figuras estão disponíveis em `9.baselines/`, e qualquer pesquisador pode reproduzir a inversão a partir dos arquivos versionados.
+- A magnitude da inversão é grande (0.709 sob janela única vs média 0.51 sob CV multi-fold), o que reduz o risco de que a diferença observada seja atribuível a variação amostral normal.
+- Os protocolos de avaliação corrigidos (Seção 5.11) são diretamente aplicáveis por outros pesquisadores em trabalhos subsequentes na área, independentemente do contexto específico desta dissertação.
 
-Os Capítulos 1 a 4 permanecem válidos como descrição do *pipeline* construído (coleta de notícias, *embeddings*, extração de sentimento, treinamento inicial). A mudança é na interpretação dos resultados: o que parecia ser um achado sobre *representação textual para finanças* torna-se um achado sobre *viés de avaliação em séries temporais financeiras*.
+O reposicionamento não invalida o trabalho das etapas anteriores. O *pipeline* de coleta, processamento e treinamento é engenharia útil e replicável. O que é revisado é a leitura dos resultados numéricos que o *pipeline* produz: um achado que parecia ser sobre *representação textual para finanças* torna-se um achado sobre *viés metodológico em avaliação de séries temporais financeiras*. A decisão final sobre a adoção deste reposicionamento cabe ao(s) orientador(es) e à banca, e depende de considerações tanto científicas quanto de escopo do programa acadêmico.
 
-## 5.13 Trabalhos futuros sugeridos
+## 5.14 Trabalhos futuros sugeridos
 
 As conclusões deste capítulo abrem várias direções:
 
@@ -259,6 +303,7 @@ As conclusões deste capítulo abrem várias direções:
 | CV vs *class-prior shift* | `9.baselines/expanding_cv_hero.png` | 5.8 | *Scatter* AUC × shift, faceted por ativo |
 | **VALE3 bimodal histogram** | `9.baselines/vale3_deepdive_hist.png` | 5.9 | **Distribuição de 880 execuções — figura central** |
 | VALE3 por fold | `9.baselines/vale3_deepdive.png` | 5.9 | AUC por *fold* e delta pareado |
+| Ablation boxplot | `9.baselines/ablation_boxplot.png` | 5.10 | PRICE vs SENT vs PRICE+SENT por ticker |
 
 ## Tabelas de resultados
 
@@ -269,3 +314,4 @@ Os CSVs brutos e agregados estão em `9.baselines/`:
 - `results_multi_seed_multi_ticker.csv` + `multi_seed_multi_ticker_summary.csv` — Experimento 5.6
 - `results_expanding_cv.csv` + `results_expanding_cv_fold_agg.csv` — Experimento 5.8
 - `results_vale3_deepdive.csv` — Experimento 5.9
+- `results_ablation.csv` + `ablation_summary.csv` — Experimento 5.10
