@@ -145,6 +145,119 @@
       "priority": 9,
       "passes": true,
       "notes": "Diagrama Mermaid criado em pipeline.md cobrindo todas as etapas de ponta a ponta com rótulos descritivos"
+    },
+    {
+      "id": "US-010",
+      "title": "Expandir Histórico de Preços e Reconstruir Dataset",
+      "description": "Como autor do TCC, quero estender o período de dados de preços de 5 anos para o máximo disponível, aproveitando as notícias já coletadas desde 2009, para aumentar significativamente o volume de amostras de treinamento.",
+      "acceptanceCriteria": [
+        "Alterar `yahoo_finance.py` para usar `period='max'` em vez de `period='5y'`",
+        "Reexecutar extração de preços para PETR4, VALE3 e ITUB4 com período estendido",
+        "Reexecutar `extractor.py` com `meses_atras` suficiente para cobrir todo o histórico disponível na API do InfoMoney (desde 2009+)",
+        "Ao coletar notícias, carregar artigos existentes e fazer append apenas de novos artigos (sem duplicatas), usando o campo `id` como chave de deduplicação",
+        "Ao coletar preços, fazer append apenas de datas não presentes nos dados existentes",
+        "Reprocessar embeddings com `news_embedder.py`, aproveitando `embeddings_cache.npz` para não reprocessar artigos já embedados",
+        "Gerar novo `dataset_full.csv` com o período estendido",
+        "Registrar novas dimensões (dias × features) em célula markdown no notebook",
+        "Novo dataset deve ter pelo menos 3x mais amostras que o atual (>3600 dias)",
+        "Confirmar ausência de data leakage no novo split walk-forward"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Código preparado para expansão: yahoo_finance.py alterado para period='max' (default). extractor.py ganhou carregar_existentes() para append incremental com dedup por id. extrair_varias_acoes() agora aceita incremental=True. Documentação atualizada em PASSO_A_PASSO.md, pipeline.md e nos 3 notebooks. A execução efetiva (coleta de dados e re-treinamento) requer Ollama e conexão com APIs externas."
+    },
+    {
+      "id": "US-011",
+      "title": "Documentar Etapa 4 — Sentimento com FinBERT-PT-BR",
+      "description": "Como autor do TCC, quero documentar a substituição dos embeddings genéricos do Ollama por features de sentimento financeiro específico via FinBERT-PT-BR, que foi o principal achado do projeto.",
+      "acceptanceCriteria": [
+        "Criar/atualizar README.md em `4.finbert-br/` descrevendo a hipótese: embeddings genéricos contêm muito ruído; sentimento financeiro específico é mais informativo",
+        "Documentar o modelo FinBERT-PT-BR (origem, corpus de treino, classes POSITIVO/NEGATIVO/NEUTRO)",
+        "Documentar a estratégia de extração: batch=32, input=título+resumo (limite 512 tokens), preservação dos logits brutos",
+        "Documentar a agregação diária: 5 features (média logit_pos, logit_neg, logit_neu, classe média, contagem)",
+        "Adicionar células markdown no `index.ipynb` explicando cada bloco de código (carregamento do modelo, inferência em batch, agregação diária)",
+        "Adicionar células markdown no `model_training.ipynb` documentando o retreinamento dos 4 modelos com 16 features (11 preço + 5 sentimento)",
+        "Registrar a tabela comparativa Etapa 3 vs Etapa 4 (BiLSTM, BiLSTM Reduzido, XGBoost, Transformer)",
+        "Destacar o resultado do Transformer: AUC=0.709, accuracy=76.3%, F1(Sobe)=0.85, precision(Desce)=1.00",
+        "Referenciar `ANALISE_RESULTADOS.md` e os PNGs de visualização (lstm_results.png, transformer_results_finbert.png, roc_comparison_finbert.png, xgboost_roc_finbert.png)",
+        "Documentar a conclusão central: 5 features de sentimento específico superam 1024 embeddings genéricos"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "README.md criado em 4.finbert-br/ com hipótese, pipeline, tabela comparativa Etapa 3 vs 4 e conclusão central. Célula markdown de introdução adicionada em index.ipynb (model_training.ipynb já tinha 12 células markdown)."
+    },
+    {
+      "id": "US-012",
+      "title": "Documentar Etapa 5 — Threshold Tuning e Experimento Horizonte 5 dias",
+      "description": "Como autor do TCC, quero documentar os experimentos de ajuste de threshold e redução de horizonte temporal, incluindo os resultados negativos e as lições extraídas.",
+      "acceptanceCriteria": [
+        "Criar/atualizar README.md em `5.threshold-tuning/` resumindo os dois experimentos",
+        "Documentar Experimento 5.1 (threshold tuning): varredura 0.10–0.90, otimização por F1 no conjunto de validação, descoberta de que 3/4 modelos preveem só a classe majoritária",
+        "Documentar Experimento 5.2 (horizonte 5 dias + 16 features derivadas): médias móveis, deltas, razão pos/neg, volatilidade do sentimento",
+        "Adicionar células markdown no `index.ipynb` (threshold tuning) explicando cada bloco",
+        "Adicionar células markdown no `horizon5_features.ipynb` explicando feature engineering temporal",
+        "Registrar a tabela comparativa h=21 vs h=5 e a conclusão: horizonte 5 dias piora todos os modelos",
+        "Documentar a análise de feature importance do XGBoost: 6 das 10 features top são derivadas de sentimento (média 21d do logit negativo é #1)",
+        "Documentar a lição metodológica: threshold tuning não substitui poder discriminativo; o sinal de sentimento do InfoMoney se manifesta no médio prazo (~21 dias)",
+        "Referenciar `ANALISE_RESULTADOS.md`, `ANALISE_HORIZON5.md` e os PNGs (threshold_search, confusion_matrices_optimized, feature_importance_h5, roc_h5)"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "README.md criado em 5.threshold-tuning/ cobrindo Experimentos 5.1 e 5.2, lição metodológica sobre threshold tuning, tabela h=21 vs h=5 e feature importance. Ambos notebooks já possuíam células markdown extensivas."
+    },
+    {
+      "id": "US-013",
+      "title": "Documentar Etapa 6 — Histórico de 17 Anos",
+      "description": "Como autor do TCC, quero documentar o experimento de extensão temporal para 17 anos de notícias, validando se mais dados melhoram a performance.",
+      "acceptanceCriteria": [
+        "Criar README.md em `6.17years-news/` descrevendo objetivo, dataset estendido e resultados",
+        "Documentar a hipótese: aumentar histórico de ~5 para ~17 anos pode capturar mais regimes de mercado e melhorar generalização",
+        "Documentar a coleta estendida (PETR4, VALE3, ITUB4) e o volume final de artigos/dias",
+        "Adicionar células markdown no `index.ipynb` explicando carregamento, sentimento, treinamento e avaliação",
+        "Registrar métricas dos 4 modelos no dataset 17y (ROC-AUC, accuracy, F1)",
+        "Comparar contra os resultados da Etapa 4 (4–5 anos) — discutir se mais dados ajudaram, prejudicaram ou foram neutros",
+        "Discutir possíveis efeitos de regime (crise 2008, COVID, ciclos Selic) sobre a estabilidade do sinal",
+        "Referenciar PNGs gerados (lstm_results, roc_17years, transformer_17y, xgboost_roc_17y)"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "README.md criado em 6.17years-news/ com objetivo, pipeline, discussão de regimes de mercado (2008–2026) e referências aos artefatos. Notebook index.ipynb já possuía 8 células markdown."
+    },
+    {
+      "id": "US-014",
+      "title": "Documentar Etapa 7 — Avaliação Cruzada de Modelos e Balanceamento",
+      "description": "Como autor do TCC, quero documentar a avaliação consolidada dos modelos ao longo das etapas e a análise de balanceamento de classes.",
+      "acceptanceCriteria": [
+        "Criar README.md em `7.model-evaluation/` descrevendo o objetivo: comparar de forma consistente todos os modelos das Etapas 3–6",
+        "Documentar a estrutura `shared/` (utilitários compartilhados) e `results/` (saídas)",
+        "Adicionar células markdown nos notebooks `stage3_ollama_embeddings.ipynb`, `stage4_finbert_4y.ipynb`, `stage5_horizon5.ipynb`, `stage6_finbert_17y.ipynb` explicando objetivos e blocos de código",
+        "Referenciar e expandir `BALANCEAMENTO_DE_CLASSES.md` com discussão sobre desbalanceamento (59/41), pos_weight, e impacto em accuracy vs ROC-AUC",
+        "Gerar tabela final consolidada: 4 modelos × 4 configurações (Stage 3, 4, 5, 6) com ROC-AUC e F1",
+        "Discutir variância dos resultados (idealmente com bootstrap CIs) para avaliar se as diferenças são estatisticamente significativas",
+        "Documentar a recomendação final do projeto baseada nesta avaliação"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "README.md criado em 7.model-evaluation/ com estrutura, protocolo de avaliação, tabela consolidada e próximos passos (bootstrap CIs, replicação por ticker, backtest). Células markdown de introdução adicionadas nos 4 notebooks stage3/4/5/6 que iniciavam com código."
+    },
+    {
+      "id": "US-015",
+      "title": "Documentar Etapa 8 — Coleta Multi-Fonte de Notícias",
+      "description": "Como autor do TCC, quero documentar a expansão para múltiplas fontes de notícias (InfoMoney + Google News + CVM) para testar robustez e aumentar cobertura.",
+      "acceptanceCriteria": [
+        "Criar README.md em `8.multi-source-news/` descrevendo a motivação: reduzir viés de fonte única e aumentar cobertura temporal/temática",
+        "Documentar `cvm_collector.py`: propósito, endpoints/fontes da CVM utilizadas, formato dos dados",
+        "Documentar `google_news_collector.py`: estratégia de busca, decodificação de URLs, extração de full text, fallback para título",
+        "Adicionar células markdown em `coleta_completa.ipynb` e `test_pipeline.ipynb` explicando cada etapa do pipeline multi-fonte",
+        "Documentar o pipeline de sentimento aplicado às fontes adicionais (FinBERT-PT-BR, mesmo procedimento da Etapa 4)",
+        "Registrar volume coletado por fonte e período coberto",
+        "Documentar `multi_source_daily_sentiment.csv`: schema, agregação por fonte e por dia",
+        "Discutir lições aprendidas: ganho marginal vs ruído adicionado, qualidade do texto extraído via Google News",
+        "Listar limitações conhecidas (ex.: rate limits, paywall, qualidade de extração de full text)"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "README.md criado em 8.multi-source-news/ documentando google_news_collector.py, cvm_collector.py, pipeline multi-fonte, limitações conhecidas e perguntas a investigar. Notebooks coleta_completa.ipynb e test_pipeline.ipynb já possuíam células markdown."
     }
   ]
 }
