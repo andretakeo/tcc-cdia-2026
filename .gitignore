@@ -222,3 +222,15 @@ __marimo__/
 *_noticias.json
 *_noticias_sentiment.json
 embeddings_cache.npz
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.brf
+*.idx
+*.lof
+*.lot
+*.toc
+*.out
+*.synctex.gz
