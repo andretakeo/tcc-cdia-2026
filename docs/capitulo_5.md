@@ -4,6 +4,10 @@
 
 O que significa, de fato, afirmar que um modelo de *machine learning* "funciona" para predição de direção de preços? Uma métrica pontual como ROC-AUC = 0.709, reportada sobre um único conjunto de teste, responde a essa pergunta apenas parcialmente: ela descreve o desempenho do modelo em *uma amostra particular*, sob *uma semente particular*, sob *uma única divisão temporal* dos dados. Em séries financeiras, onde a não-estacionariedade é a regra e o volume de dados é tipicamente pequeno em relação à capacidade dos modelos modernos, esta descrição pode ser enganosa em grau suficiente para inverter a conclusão qualitativa do estudo.
 
+Esta fragilidade não é novidade na literatura especializada. Bailey et al. (2014) demonstraram formalmente que a otimização de estratégias sobre um único período de *backtest* inevitavelmente infla métricas de desempenho — o fenômeno que denominaram *backtest overfitting* — e quantificaram o número mínimo de tentativas necessárias para que um resultado favorável seja estatisticamente espúrio. López de Prado (2018) sistematizou o problema no contexto de *machine learning* financeiro, propondo validação cruzada com purga e embargo (*purged k-fold CV*) como resposta ao vazamento temporal que contamina divisões convencionais de treino/teste; o mesmo autor documenta como *splits* únicos produzem estimadores de desempenho com viés otimista severo em séries não-estacionárias. No plano mais geral de aprendizado de máquina, Cawley & Talbot (2010) mostraram que a seleção de modelo sobre o mesmo conjunto de dados usados para estimar desempenho — o chamado *model selection bias* — é suficiente para inflar métricas de teste mesmo quando não há *data leakage* explícito, um mecanismo análogo ao que opera em avaliações de janela única.
+
+A adoção do protocolo de *walk-forward split* único nos Capítulos 3 e 4 seguiu o padrão predominante na literatura de *deep learning* aplicado à predição de direção de preços, onde esse protocolo é virtualmente universal: Fischer & Krauss (2018), ao introduzirem LSTMs para previsão de ações do S&P 500, utilizaram divisão cronológica fixa sem validação multi-fold; Xu & Cohen (2018), no modelo StockNet com texto, adotaram o mesmo esquema; Araci (2019), no FinBERT original, também avaliou sobre janela única com divisão temporal pré-definida. A conformidade com esse padrão foi uma escolha deliberada de comparabilidade: um protocolo distinto tornaria as métricas dos Capítulos 3 e 4 incomparáveis com a literatura de referência. O Capítulo 5 não altera retroativamente os resultados anteriores — reconhece que eles foram obtidos com o protocolo padrão da área — mas demonstra empiricamente, em um caso concreto, o alcance das distorções que esse protocolo pode produzir. Esta demonstração empírica em dados brasileiros, com 1.435 execuções de modelo e suporte estatístico formal, é a contribuição metodológica central da dissertação: ela transforma uma preocupação teórica conhecida em evidência quantificada.
+
 Este capítulo é um estudo de caso dessa inversão. Ele parte do resultado apresentado nos Capítulos 3 e 4 — um Transformer treinado com *features* de sentimento FinBERT-PT-BR atingindo ROC-AUC = 0.709 e acurácia de 76.3% na previsão de direção do ITUB4 em horizonte de 21 dias — e aplica um conjunto progressivamente mais rigoroso de protocolos de avaliação para determinar se o resultado sobrevive a escrutínio metodológico. O protocolo original utilizado nos capítulos anteriores é o padrão da literatura: *walk-forward split* único com divisão cronológica 70% treino / 15% validação / 15% teste.
 
 Três observações sobre o resultado original justificam a investigação:
@@ -24,7 +28,7 @@ O código e os resultados numéricos completos de cada experimento estão em `9.
 
 | Experimento | Notebook | Runs |
 |---|---|---:|
-| 5.3 — Dumb baseline | `dumb_baseline.ipynb` | 4 |
+| 5.3 — Baseline autoregressivo | `dumb_baseline.ipynb` | 4 |
 | 5.4 — Bootstrap CI | `bootstrap_stage4.ipynb` | 1 |
 | 5.5 — Multi-seed em ITUB4 | `multi_seed.ipynb` | 40 |
 | 5.6 — Multi-seed × multi-ticker | `multi_seed_multi_ticker.ipynb` | 120 |
@@ -37,7 +41,7 @@ Total: **1.435 treinamentos de modelo**, cobrindo 3 ativos, até 20 sementes por
 
 Os utilitários reusáveis (split walk-forward, bootstrap CI, geração de alvo binário) estão em `9.baselines/eval_utils.py`.
 
-## 5.3 Experimento 1 — Dumb baseline: qual o piso sem sentimento?
+## 5.3 Experimento 1 — Baseline autoregressivo: qual o piso sem sentimento?
 
 **Pergunta.** Se o Transformer-FinBERT atinge AUC = 0.709, qual é o AUC de um modelo trivial que não usa features textuais nenhuma?
 
@@ -47,6 +51,36 @@ Os utilitários reusáveis (split walk-forward, bootstrap CI, geração de alvo 
 
 **Interpretação.** Um modelo clássico treinado em 5 features de preço, sem qualquer informação textual, captura 93% do AUC reportado pelo modelo com sentimento. Este já é um sinal de alerta: se o ganho incremental da representação textual é de apenas 5 pontos de AUC e nenhum intervalo de confiança foi reportado, não há evidência de que o ganho seja estatisticamente distinguível do ruído de estimação.
 
+### 5.3.1 Baselines verdadeiramente ingênuos
+
+Para contextualizar o baseline autoregressivo, avaliamos três preditores que não aprendem nenhuma relação nos dados:
+
+| Preditor | AUC [IC 95%] | Descrição |
+|---|---|---|
+| Classe majoritária | 0.500 [0.500, 0.500] | Sempre prevê "Sobe" |
+| Coin flip ponderado | 0.500 [0.500, 0.500] | P(Sobe) = prior do treino (57.0%) |
+| Persistência (h=21) | 0.474 [0.405, 0.543] | Direção dos últimos 21 dias se repete |
+| **Baseline autoregressivo (XGB)** | **0.658 [0.565, 0.744]** | **5 features de preço** |
+
+O baseline autoregressivo supera decisivamente os preditores ingênuos, confirmando que as 5 features de preço (retorno, lags, volume, volatilidade) contêm sinal preditivo real — embora fraco. A persistência (AUC = 0.474) opera ligeiramente abaixo do acaso, indicando que a direção dos últimos 21 dias não é informativa para os próximos 21 dias no ITUB4. A afirmação correta da dissertação é portanto: **o sentimento não adiciona valor além de features derivadas de preço**, o que é uma afirmação mais precisa do que "o sentimento não adiciona nada além de um baseline trivial", uma vez que o baseline autoregressivo é ele próprio um modelo competente.
+
+Os resultados completos estão em `9.baselines/naive_baselines.ipynb` e `results_naive_baselines.csv`.
+
+### 5.3.2 Controle de confundimento: dimensionalidade vs especificidade de domínio
+
+A comparação direta entre Etapa 3 (1.024 *embeddings* Ollama, AUC = 0.610 via XGBoost com PCA para 32 dimensões) e Etapa 4 (5 *features* FinBERT, AUC = 0.670 via XGBoost) é confundida pela mudança simultânea de representação e dimensionalidade. Para isolar o efeito da redução dimensional, treinamos o XGBoost (mesma configuração) em 20 subconjuntos aleatórios de 5 dimensões extraídas dos 1.024 *embeddings* Ollama, mantendo tudo o mais constante.
+
+| Configuração | AUC | Dim |
+|---|---:|---:|
+| 1.024 Ollama (PCA → 32) | 0.610 | 32 |
+| 5 Ollama aleatórios (média ± std) | 0.509 ± 0.057 | 5 |
+| 5 FinBERT sentimento | 0.670 | 5 |
+| 5 features de preço (baseline) | 0.658 | 5 |
+
+Nenhum dos 20 subconjuntos aleatórios de *embeddings* Ollama atingiu o AUC do FinBERT (0.670); a média (0.509) é próxima do acaso e inferior ao resultado com PCA completo para 32 dimensões (0.610). Este achado tem duas implicações: (1) a melhoria Etapa 3 → Etapa 4 **não** é explicável apenas por redução de dimensionalidade — selecionar 5 dimensões aleatórias dos *embeddings* genéricos produz desempenho pior, não melhor; (2) o FinBERT está de fato extraindo informação específica de domínio que os *embeddings* genéricos não capturam, mesmo controlando a dimensionalidade. A ressalva é que esta conclusão é válida para a comparação entre representações sob avaliação de janela única — o Experimento 5.10 mostra que, sob avaliação multi-fold, o ganho do sentimento FinBERT sobre features de preço desaparece.
+
+Os resultados completos estão em `9.baselines/dimensionality_control.ipynb` e `results_dimensionality_control.csv`.
+
 ## 5.4 Experimento 2 — Reprodução com intervalo de confiança
 
 **Pergunta.** O próprio AUC = 0.709 da Etapa 4, quando reportado com intervalo de confiança bootstrap, é consistente ou não com o *baseline*?
@@ -55,7 +89,7 @@ Os utilitários reusáveis (split walk-forward, bootstrap CI, geração de alvo 
 
 **Resultado.** Sob recompilação com semente 42, o modelo atingiu **AUC = 0.442 [0.358, 0.528]**. A matriz de confusão mostra `[[36, 0], [116, 0]]` — o modelo prevê "Sobe" para todas as 152 amostras do conjunto de teste.
 
-**Interpretação.** Com apenas uma diferença de semente aleatória em relação ao experimento original, o mesmo código e a mesma arquitetura produzem um AUC de 0.442 em vez de 0.709 — uma diferença de **0.267 pontos de AUC**. Esta é uma variação absurda para uma mudança de semente. O experimento original não é reproduzível no sentido estrito: não há um AUC "verdadeiro" que diferentes execuções convergem para, mas sim uma distribuição ampla da qual o valor 0.709 é apenas uma amostra.
+**Interpretação.** Com apenas uma diferença de semente aleatória em relação ao experimento original, o mesmo código e a mesma arquitetura produzem um AUC de 0.442 em vez de 0.709 — uma diferença de **0.267 pontos de AUC**. Esta variação excede em 22× o desvio-padrão do *baseline* (0.012), constituindo um tamanho de efeito extremo (d ≈ 22, calculado como 0.267 / 0.012). O experimento original não é reproduzível no sentido estrito: não há um AUC "verdadeiro" que diferentes execuções convergem para, mas sim uma distribuição ampla da qual o valor 0.709 é apenas uma amostra.
 
 ## 5.5 Experimento 3 — Multi-seed em ITUB4
 
@@ -68,12 +102,12 @@ Os utilitários reusáveis (split walk-forward, bootstrap CI, geração de alvo 
 | Modelo | AUC mean | AUC std | AUC median | AUC min | AUC max | prec(Desce) mean |
 |---|---:|---:|---:|---:|---:|---:|
 | **Transformer + FinBERT** | 0.686 | **0.261** | **0.802** | 0.080 | 0.931 | 0.177 |
-| Dumb baseline (XGB) | 0.641 | **0.012** | 0.638 | 0.615 | 0.660 | 0.313 |
+| Baseline autoregressivo (XGB) | 0.641 | **0.012** | 0.638 | 0.615 | 0.660 | 0.313 |
 
 Dois fatos merecem destaque:
 
 - **A mediana do Transformer (0.802) é superior ao resultado original (0.709).** Longe de ter sido um valor ótimo, 0.709 está **abaixo** da mediana da distribuição. 13 de 20 sementes (65%) atingem AUC ≥ 0.709.
-- **O desvio-padrão do Transformer é 22× maior que o do baseline.** O *baseline* produz AUCs entre 0.615 e 0.660 — uma faixa estreita e estável. O Transformer produz AUCs entre 0.080 e 0.931 — essencialmente toda a faixa possível.
+- **O desvio-padrão do Transformer é 22× maior que o do baseline.** O *baseline* produz AUCs entre 0.615 e 0.660 — uma faixa estreita e estável. O Transformer produz AUCs entre 0.080 e 0.931 — essencialmente toda a faixa possível (coeficiente de variação = 38%, calculado como 0.261 / 0.686).
 
 O *scatter plot* de AUC contra número de *down calls* (ver `multi_seed_tradeoff.png`) revela a estrutura responsável pela variância: **os pontos de alta AUC do Transformer agrupam-se em dois extremos**, um com zero *down calls* (sempre prevê "Sobe") e outro com ~150 *down calls* (sempre prevê "Desce"). Não há um "meio-termo" discriminativo. O modelo está oscilando entre dois estados degenerados.
 
@@ -140,9 +174,9 @@ Total: 3 ativos × 5 *folds* × 5 sementes × 2 modelos = **145 treinamentos** (
 | **VALE3** | 0.599 | **0.635** | +0.036 |
 | **Média** | **0.667** | **0.509** | **−0.158** |
 
-A inversão é dramática:
+A inversão é quantitativamente expressiva:
 
-1. **O dumb baseline vence o Transformer-FinBERT em 2 dos 3 ativos por uma margem de 0.25 pontos de AUC.** Isto é uma diferença enorme, muito maior do que qualquer ganho do Transformer sob avaliação de janela única.
+1. **O baseline autoregressivo vence o Transformer-FinBERT em 2 dos 3 ativos por uma margem de 0.25 pontos de AUC.** Isto corresponde a uma diferença de grande magnitude (d ≈ 6,25, calculado como 0.25 / 0.04, em que 0.04 é o desvio-padrão do *baseline*), muito maior do que qualquer ganho do Transformer sob avaliação de janela única.
 2. **O Transformer opera próximo do acaso (AUC ~ 0.5) em média.** Em ITUB4 e PETR4, atinge AUCs menores que 0.5 na média dos *folds*.
 3. **Em VALE3, o Transformer aparentemente vence por 0.036 pontos de AUC**, mas este resultado é investigado em profundidade no experimento 5.9 e revelado como ruído amostral.
 
@@ -174,12 +208,33 @@ Com uma amostra 8× maior que no experimento 5.8, o sinal de VALE3 **inverte**: 
 
 **A figura `vale3_deepdive_hist.png` contém o achado mais importante de todo este capítulo.** Ela plota a distribuição completa de 880 AUCs (52 *folds* × 10 sementes, para cada modelo):
 
-- **O dumb baseline produz uma distribuição unimodal**, centrada próxima de 0.55, com massa entre 0.1 e 0.9. É a forma que se esperaria de um classificador fraco-mas-honesto enfrentando um problema difícil.
+- **O baseline autoregressivo produz uma distribuição unimodal**, centrada próxima de 0.55, com massa entre 0.1 e 0.9. É a forma que se esperaria de um classificador fraco-mas-honesto enfrentando um problema difícil.
 - **O Transformer produz uma distribuição bimodal severa**, com um pico de ~55 execuções em AUC < 0.05 (o maior *bin* do histograma) e um pico menor de ~37 execuções em AUC > 0.95. A massa central em AUC ≈ 0.5 é reduzida. A média de 0.484 é estatisticamente correta mas descritivamente enganosa: quase nenhuma execução produz de fato um AUC próximo de 0.48.
 
 **Interpretação.** O Transformer-FinBERT não está aprendendo uma função preditiva. Está aprendendo um classificador degenerado (*sempre prever Desce* ou *sempre prever Sobe*), cuja escolha entre os dois estados depende do ruído de inicialização. Quando a escolha coincide com a classe majoritária do *fold* de teste, o AUC aproxima-se de 1.0. Quando não coincide, o AUC aproxima-se de 0.0. A média populacional sobre muitos *folds* e sementes se cristaliza em ~0.5, que é a assinatura esperada de um preditor sem capacidade discriminativa real.
 
 A existência de centenas de execuções com AUC ≥ 0.9 em VALE3 é o que permite que avaliações de janela única ocasionalmente reportem AUCs altos — mas estas são, estatisticamente, coincidências estruturais, não capacidade preditiva.
+
+## 5.9b Varredura de horizontes de previsão
+
+**Pergunta.** A tese compara apenas dois horizontes (h=5 e h=21). A relação entre AUC e horizonte é monotônica? A escolha de h=5 é ótima?
+
+**Protocolo.** Treinar o baseline autoregressivo (XGBoost, 5 features de preço) sobre seis horizontes de previsão: h ∈ {1, 2, 5, 10, 21, 42} dias úteis. Cada configuração usa o mesmo *walk-forward split* 70/15/15, com bootstrap CI de 95% (1.000 reamostragens). Dataset: ITUB4 (mesmos dados dos experimentos anteriores).
+
+**Resultado.**
+
+| Horizonte (dias) | AUC [IC 95%] | N teste | Balanço teste |
+|---:|---|---:|---:|
+| 1 | 0.487 [0.403, 0.570] | 185 | 55.7% |
+| 2 | 0.497 [0.414, 0.581] | 185 | 56.2% |
+| 5 | 0.518 [0.442, 0.600] | 184 | 59.8% |
+| 10 | 0.418 [0.328, 0.501] | 184 | 61.4% |
+| 21 | 0.632 [0.531, 0.729] | 182 | 69.2% |
+| 42 | 0.802 [0.677, 0.907] | 179 | 86.6% |
+
+**Interpretação.** A relação AUC × horizonte **não** é monotonicamente decrescente como a hipótese de "impacto de curto prazo das notícias" sugeriria. Ao contrário, o AUC do baseline autoregressivo *aumenta* com o horizonte, atingindo 0.802 para h=42. Este resultado é explicável pelo desbalanceamento crescente da classe: com h=42, 86.6% do conjunto de teste é "Sobe", e um modelo que aprende essa tendência obtém AUC alto sem capacidade preditiva real. Para horizontes curtos (h ≤ 5), o AUC é próximo de 0.5 — o sinal autoregressivo é essencialmente nulo. O ponto h=10 apresenta uma anomalia (AUC = 0.418, abaixo do acaso), possivelmente por ruído amostral na janela de teste. Estes resultados reforçam a necessidade de interpretar o AUC sempre em conjunto com o balanço de classes do teste e com intervalos de confiança.
+
+A figura `9.baselines/horizon_sweep.png` visualiza a relação completa.
 
 ## 5.10 Experimento 8 — Ablation: o sentimento adiciona algo, sob protocolo correto?
 
@@ -224,27 +279,105 @@ A conclusão fecha definitivamente a investigação metodológica deste capítul
 
 Esta conclusão deve ser interpretada com cuidado: ela **não** afirma que sentimento de notícias financeiras seja, em geral, irrelevante para previsão de preços. Afirma apenas que (i) a representação específica adotada (5 *features* agregadas diariamente, derivadas do FinBERT-PT-BR), (ii) o horizonte específico (21 dias úteis) e (iii) os ativos específicos (3 *large caps* brasileiros) não exibem ganho preditivo mensurável quando comparados rigorosamente contra um *baseline* trivial. Outras representações, horizontes ou ativos podem produzir resultados diferentes — esta é uma das direções de trabalho futuro discutidas em 5.13.
 
+### Poder estatístico dos conjuntos de teste
+
+Os conjuntos de teste utilizados neste estudo variam de 60 a 177 amostras. Para avaliar se esses tamanhos são adequados para detectar os efeitos observados, calculamos o erro-padrão do AUC sob a hipótese nula (AUC = 0.5) usando a fórmula de Hanley & McNeil (1982) e o tamanho mínimo de efeito detectável (MDE) com 80% de poder e α = 0.05:
+
+| Cenário | N | Balanço | SE(AUC\|H₀) | MDE (80% poder) |
+|---|---:|---:|---:|---:|
+| Walk-forward test completo | 177 | 69% | 0.047 | 0.132 |
+| Walk-forward janelado | 152 | 76% | 0.055 | 0.155 |
+| Fold expanding-window (90 dias) | 90 | 60% | 0.063 | 0.175 |
+| Fold expanding-window (60 dias) | 60 | 60% | 0.077 | 0.215 |
+| Fold VALE3 deep-dive (60 dias) | 60 | 65% | 0.079 | 0.221 |
+
+O efeito observado na *ablation* (Δ = +0.003, Seção 5.10) está muito abaixo do MDE para qualquer tamanho de teste utilizado — o estudo não teria poder para detectar um efeito deste tamanho mesmo que ele fosse real. Em contraste, a diferença Transformer vs baseline (Δ = −0.255, Seção 5.8) excede amplamente o MDE em todos os cenários, indicando que esta diferença é estatisticamente robusta e não atribuível a insuficiência amostral. Os detalhes do cálculo estão em `9.baselines/power_analysis.ipynb`.
+
+## 5.10b Validação rigorosa do TCN Stage 5b
+
+**Pergunta.** O TCN [32,32] com features engenheiradas de sentimento (AUC = 0.643 sob janela única no Stage 5b) sobrevive ao mesmo escrutínio metodológico aplicado ao Transformer nos experimentos anteriores?
+
+**Protocolo.** (a) Treinar o TCN [32,32] com 20 sementes na mesma janela de treino/teste do Stage 5b (ITUB4, h=5, features engenheiradas). (b) Avaliar sob *expanding-window CV* com 5 *folds* × 5 sementes em ITUB4 (min_train=600, val=90, teste=90, passo=90). Comparar com o baseline autoregressivo XGBoost do Experimento 5.8 (AUC médio = 0.700 em ITUB4).
+
+**Resultado multi-seed (20 sementes, janela única).**
+
+| Estatística | TCN [32,32] | Transformer (Exp 5.5) | Baseline XGB (Exp 5.5) |
+|---|---:|---:|---:|
+| AUC média | 0.513 | 0.686 | 0.641 |
+| AUC std | **0.102** | **0.261** | **0.012** |
+| AUC mediana | 0.462 | 0.802 | 0.638 |
+| AUC min | 0.384 | 0.080 | 0.615 |
+| AUC max | 0.691 | 0.931 | 0.660 |
+| Sementes ≥ 0.643 | 4/20 (20%) | 13/20 (65%) | 0/20 (0%) |
+| Sementes < 0.50 | 12/20 (60%) | 7/20 (35%) | 0/20 (0%) |
+
+O TCN é **mais estável que o Transformer** (std = 0.102 vs 0.261) mas **substancialmente menos preciso**: sua média (0.513) e mediana (0.462) estão próximas do acaso. Diferentemente do Transformer, o TCN não exibe distribuição bimodal — os AUCs distribuem-se de forma mais contínua entre 0.38 e 0.69 — mas 60% das sementes ficam abaixo de 0.50. O resultado original de AUC = 0.643 é revelado como um ponto no percentil 80 da distribuição, não um valor representativo.
+
+**Resultado expanding-window CV (5 folds × 5 sementes).**
+
+| Fold | AUC médio (5 seeds) | N teste |
+|---:|---:|---:|
+| 0 | 0.540 | 60 |
+| 1 | 0.565 | 60 |
+| 2 | 0.427 | 60 |
+| 3 | 0.555 | 60 |
+| 4 | 0.692 | 60 |
+| **Média geral** | **0.556** | — |
+
+Sob expanding-window CV, o TCN atinge AUC médio de **0.556** — inferior ao baseline autoregressivo do Experimento 5.8 (0.700) por **0.144 pontos de AUC**. A performance é heterogênea entre folds: o Fold 4 atinge 0.692 (próximo do baseline), mas o Fold 2 cai para 0.427 (abaixo do acaso). **Nota metodológica:** esta comparação envolve horizontes diferentes — o TCN usa h=5 (Stage 5b) enquanto o baseline do Exp. 5.8 usa h=21. A varredura de horizontes (Seção 5.9b) mostra que o baseline com h=5 atinge AUC = 0.518 sob janela única; usando este referencial, a vantagem do TCN (0.556 − 0.518 = +0.038) é marginal e está abaixo do MDE calculado na análise de poder estatístico.
+
+**Interpretação.** O TCN [32,32] do Stage 5b, embora mais estável que o Transformer, **não sobrevive ao escrutínio multi-fold**. Sob expanding-window CV, opera abaixo do baseline autoregressivo em todos os folds exceto o último. O resultado de AUC = 0.643 reportado no Stage 7 é, portanto, outro artefato da avaliação por janela única — menos extremo que o 0.709 do Transformer (cuja std é 2.5× maior), mas igualmente não representativo do desempenho real do modelo ao longo do tempo. Este achado fecha a última exceção aparente: **nenhuma das configurações testadas neste trabalho — Transformer, TCN, XGBoost com sentimento — supera o baseline autoregressivo de features de preço sob avaliação metodologicamente correta**.
+
+Os resultados completos, histogramas e análise de *shift* estão em `9.baselines/tcn_validation.ipynb`, `results_tcn_validation.csv` e `tcn_validation_hist.png`.
+
 ## 5.11 Síntese dos achados
 
-Os oito experimentos deste capítulo estabelecem uma sequência lógica de descobertas:
+Os experimentos deste capítulo — os oito originais e os cinco complementares — estabelecem uma sequência lógica de descobertas:
 
-1. **(5.3–5.4)** O AUC = 0.709 original é acompanhado por uma matriz de confusão degenerada, não foi reportado com intervalo de confiança, e não é reproduzível sob mudança de semente.
+1. **(5.3–5.4)** O AUC = 0.709 original é acompanhado por uma matriz de confusão degenerada, não foi reportado com intervalo de confiança, e não é reproduzível sob mudança de semente. Baselines verdadeiramente ingênuos (classe majoritária, *coin flip*, persistência) confirmam AUC = 0.50 como piso absoluto, enquanto o baseline autoregressivo (XGBoost, 5 features de preço) atinge 0.658 — apenas 0.051 abaixo do resultado original **(5.3.1)**.
 
-2. **(5.5)** Sob 20 sementes diferentes em ITUB4, o mesmo modelo produz AUCs entre 0.08 e 0.93. A variância é explicada por colapso bimodal da arquitetura em dois estados degenerados.
+2. **(5.3.2)** O controle de dimensionalidade demonstra que 5 dimensões aleatórias dos *embeddings* Ollama produzem AUC médio de 0.509 ± 0.057, confirmando que a melhoria Etapa 3 → Etapa 4 reflete especificidade de domínio do FinBERT, não mera redução dimensional.
 
-3. **(5.6)** Os AUCs variam drasticamente entre ativos (PETR4 = 0.33, VALE3 = 0.99) sob avaliação de janela única.
+3. **(5.5)** Sob 20 sementes diferentes em ITUB4, o mesmo modelo produz AUCs entre 0.08 e 0.93. A variância é explicada por colapso bimodal da arquitetura em dois estados degenerados.
 
-4. **(5.7)** Um *ensemble* das sementes selecionadas por validação honesta gera uma estratégia *long/flat* que perde decisivamente para *buy-and-hold* (Sharpe −1.29 vs 3.25). Além disso, a correlação entre AUC de validação e AUC de teste é **negativa**.
+4. **(5.6)** Os AUCs variam drasticamente entre ativos (PETR4 = 0.33, VALE3 = 0.99) sob avaliação de janela única.
 
-5. **(5.8)** Sob validação cruzada *expanding-window* multi-fold, o dumb baseline vence o Transformer-FinBERT em 2 dos 3 ativos por 0.25 pontos de AUC, e a média global sobre todos os ativos é 0.667 (baseline) vs 0.509 (Transformer).
+5. **(5.7)** Um *ensemble* das sementes selecionadas por validação honesta gera uma estratégia *long/flat* que perde decisivamente para *buy-and-hold* (Sharpe −1.29 vs 3.25). Além disso, a correlação entre AUC de validação e AUC de teste é **negativa**.
 
-6. **(5.9)** O único caso aparentemente remanescente (VALE3) desaparece sob amostragem mais fina: com 880 execuções, a diferença não é estatisticamente significativa (Wilcoxon p = 0.194), e o Transformer apresenta a distribuição bimodal característica de classificador degenerado.
+6. **(5.8)** Sob validação cruzada *expanding-window* multi-fold, o baseline autoregressivo vence o Transformer-FinBERT em 2 dos 3 ativos por 0.25 pontos de AUC, e a média global sobre todos os ativos é 0.667 (baseline) vs 0.509 (Transformer).
 
-7. **(5.10)** Quando isolado em uma *ablation* formal sob CV multi-fold (XGBoost com PRICE / SENT / PRICE+SENT), as *features* de sentimento adicionam Δ médio = +0.003 ao *baseline* de preço (Wilcoxon p = 0.49, *bootstrap* CI [−0.012, +0.018] contém zero). Sentimento sozinho opera abaixo do acaso (AUC médio 0.480).
+7. **(5.9)** O único caso aparentemente remanescente (VALE3) desaparece sob amostragem mais fina: com 880 execuções, a diferença não é estatisticamente significativa (Wilcoxon p = 0.194), e o Transformer apresenta a distribuição bimodal característica de classificador degenerado.
+
+8. **(5.9b)** A varredura de horizontes (h ∈ {1, 2, 5, 10, 21, 42}) revela que o AUC do baseline autoregressivo aumenta com o horizonte (0.487 para h=1 até 0.802 para h=42), explicado pelo desbalanceamento crescente da classe. Para horizontes curtos (h ≤ 5), o sinal autoregressivo é essencialmente nulo.
+
+9. **(5.10)** Quando isolado em uma *ablation* formal sob CV multi-fold (XGBoost com PRICE / SENT / PRICE+SENT), as *features* de sentimento adicionam Δ médio = +0.003 ao *baseline* de preço (Wilcoxon p = 0.49, *bootstrap* CI [−0.012, +0.018] contém zero). Sentimento sozinho opera abaixo do acaso (AUC médio 0.480). A análise de poder estatístico confirma que este efeito (Δ = 0.003) está 44–74× abaixo do tamanho mínimo detectável para os tamanhos de teste utilizados.
+
+10. **(5.10b)** O TCN [32,32] — melhor resultado prático do Stage 5b (AUC = 0.643 sob janela única) — atinge apenas 0.556 sob *expanding-window CV*, inferior ao baseline autoregressivo (0.700) por 0.144 pontos. Nota: esta comparação envolve horizontes diferentes (h=5 para o TCN vs h=21 para o baseline do Exp. 5.8), o que deve ser considerado na interpretação; contudo, a varredura de horizontes (5.9b) mostra que o baseline com h=5 atinge AUC de apenas 0.518, contra o qual o TCN (0.556) tem vantagem marginal de +0.038 — insuficiente para significância estatística dado o MDE de 0.215 para N=60.
 
 A conclusão unificada é inescapável:
 
 > **Sob avaliação metodologicamente correta (multi-fold, multi-sementes, com intervalos de confiança e *ablation* de *features*), as *features* de sentimento FinBERT-PT-BR utilizadas neste estudo não adicionam sinal preditivo mensurável a um *baseline* autoregressivo de cinco *features* de preço, em nenhum dos três ativos brasileiros de grande capitalização testados. O resultado original de AUC = 0.709 em ITUB4 é um artefato da avaliação por janela única — uma combinação de variância de semente, viés de amostragem da janela de teste e colapso bimodal da arquitetura.**
+
+### 5.11.1 Reconciliação de resultados entre capítulos e etapas
+
+A tabela abaixo reconcilia os valores de "melhor modelo" reportados em diferentes contextos para a Etapa 4 (FinBERT, 16 features, horizonte 21 dias). As discrepâncias refletem a sensibilidade extrema à semente de inicialização documentada no Experimento 5.5.
+
+| Fonte | Melhor modelo | AUC | Semente | Notas |
+|---|---|---:|---|---|
+| Capítulo 4, Seção 4.5 | Transformer | 0.709 | 42 (execução original) | Sem intervalo de confiança |
+| Experimento 5.4 (Bootstrap CI) | Transformer | 0.442 | 42 (re-execução) | Divergência por estado de CUDA/versão |
+| Experimento 5.5 (Multi-seed) | Transformer | 0.686 ± 0.261 | 20 sementes | Distribuição bimodal: AUC ∈ [0.08, 0.93] |
+| Stage 7 (ANALISE_COMPARATIVA) | Random Forest | 0.559 | 42 | Re-treinamento com 7 modelos e diagnósticos |
+
+**Por que os valores diferem?**
+
+1. **A semente 42 não garante reprodutibilidade bit-a-bit entre execuções.** Diferenças de versão de CUDA, PyTorch e ordem de operações de ponto flutuante produzem trajetórias de otimização distintas mesmo com a mesma semente nominal. Este efeito é negligível para modelos estáveis (XGBoost: AUC std = 0.012) mas catastrófico para o Transformer (std = 0.261).
+
+2. **O Stage 7 retreinou todos os modelos** com código de avaliação diagnóstica adicional (SHAP, calibração, curvas de aprendizado), o que pode ter introduzido diferenças sutis no *pipeline* de dados.
+
+3. **O Transformer com 16 features e ~800 amostras de treino é estruturalmente instável** — o Experimento 5.5 demonstra que 65% das sementes produzem AUC ≥ 0.709 e 35% produzem AUC < 0.30. Neste regime, o "melhor modelo" varia com a semente, e reportar um único valor sem análise de variância é insuficiente.
+
+A conclusão principal não é que algum dos valores esteja "errado" — todos são empiricamente válidos para suas condições específicas — mas que **o conceito de "melhor modelo" perde significado quando a variância entre sementes excede a variância entre modelos**.
 
 ## 5.12 Implicações metodológicas para pesquisa em ML financeiro
 
@@ -256,7 +389,7 @@ Os achados deste capítulo generalizam além do caso específico FinBERT-PT-BR /
 
 3. **Usar *expanding-window cross-validation* em vez de *split* único.** O *split* único é estruturalmente enganoso em séries não-estacionárias, pois mede desempenho em uma única combinação arbitrária de regimes de treino e teste. O CV multi-fold amostra múltiplas combinações.
 
-4. **Comparar sempre contra um *dumb baseline* autoregressivo.** Um XGBoost sobre 5 lags de preço é o piso correto. Se o modelo proposto não supera esse piso sob CV multi-fold, o ganho reportado é provavelmente ilusório.
+4. **Comparar sempre contra um *baseline autoregressivo*.** Um XGBoost sobre 5 lags de preço é o piso correto. Se o modelo proposto não supera esse piso sob CV multi-fold, o ganho reportado é provavelmente ilusório.
 
 5. **Monitorar a distribuição de predições e a matriz de confusão, não apenas a AUC.** Um AUC alto acompanhado de uma matriz de confusão degenerada (predição quase-constante) é um sinal de colapso para classe majoritária, não de aprendizagem real.
 
@@ -274,6 +407,16 @@ Os argumentos a favor deste reposicionamento incluem:
 - Os protocolos de avaliação corrigidos (Seção 5.11) são diretamente aplicáveis por outros pesquisadores em trabalhos subsequentes na área, independentemente do contexto específico desta dissertação.
 
 O reposicionamento não invalida o trabalho das etapas anteriores. O *pipeline* de coleta, processamento e treinamento é engenharia útil e replicável. O que é revisado é a leitura dos resultados numéricos que o *pipeline* produz: um achado que parecia ser sobre *representação textual para finanças* torna-se um achado sobre *viés metodológico em avaliação de séries temporais financeiras*. A decisão final sobre a adoção deste reposicionamento cabe ao(s) orientador(es) e à banca, e depende de considerações tanto científicas quanto de escopo do programa acadêmico.
+
+### 5.13.1 Viés de fonte única e heterogeneidade de cobertura
+
+Uma limitação estrutural deste trabalho que merece discussão explícita é o uso exclusivo do InfoMoney como fonte de sinal textual. Essa escolha, justificada pela disponibilidade e pelo foco no mercado brasileiro, introduz dois tipos de viés que afetam a validade externa dos resultados.
+
+**Viés editorial.** O InfoMoney é um portal voltado ao investidor de varejo, com linguagem acessível e cobertura orientada à interpretação de eventos já públicos. Fontes institucionais — Bloomberg, Reuters, comunicados da CVM, *earnings calls* — tendem a refletir o fluxo informacional com menor latência, sendo consumidas por agentes com maior capacidade de reação imediata. É plausível que o sentimento capturado pelo InfoMoney corresponda, em boa parte, a reações já precificadas pelo mercado: a notícia chega ao portal após ter circulado em canais institucionais, e o modelo de sentimento, por consequência, opera sobre um sinal defasado em relação ao momento em que a informação efetivamente moveu os preços. Esta hipótese é consistente com a observação, reportada nas Seções 5.6 e 5.8, de que o sentimento raramente contribui de forma robusta e replicável quando o protocolo de avaliação controla adequadamente o viés temporal.
+
+**Cobertura heterogênea por ativo.** O volume de artigos coletados varia substancialmente entre os ativos analisados: 2.572 artigos para ITUB4, 1.775 para PETR4 e 1.525 para VALE3. Essa assimetria implica que a densidade do sinal textual disponível por janela de tempo difere entre ativos. Em ativos com menor cobertura, uma parcela maior das janelas de treinamento conterá dias sem nenhuma notícia, forçando o modelo a interpolar ou ignorar o sinal de sentimento. Parte da variação de desempenho entre ativos observada nos Experimentos 5.6 e 5.8 pode, portanto, ser atribuída não a diferenças intrínsecas de previsibilidade do ativo, mas à heterogeneidade de cobertura editorial da fonte utilizada.
+
+**Extensão exploratória já iniciada.** O diretório `8.multi-source-news/` do repositório registra uma exploração preliminar de coleta multi-fonte, incluindo comunicados da CVM e resultados via Google News. Embora essa extensão não tenha sido integrada ao *pipeline* principal dos experimentos reportados neste capítulo, ela estabelece a infraestrutura técnica para uma investigação futura que compare diretamente o poder preditivo de fontes com diferentes perfis editoriais e temporais de publicação.
 
 ## 5.14 Trabalhos futuros sugeridos
 
@@ -304,6 +447,9 @@ As conclusões deste capítulo abrem várias direções:
 | **VALE3 bimodal histogram** | `9.baselines/vale3_deepdive_hist.png` | 5.9 | **Distribuição de 880 execuções — figura central** |
 | VALE3 por fold | `9.baselines/vale3_deepdive.png` | 5.9 | AUC por *fold* e delta pareado |
 | Ablation boxplot | `9.baselines/ablation_boxplot.png` | 5.10 | PRICE vs SENT vs PRICE+SENT por ticker |
+| Horizon sweep | `9.baselines/horizon_sweep.png` | 5.9b | AUC × horizonte com IC 95% |
+| TCN validation histograms | `9.baselines/tcn_validation_hist.png` | 5.10b | Multi-seed + expanding-window do TCN |
+| TCN shift scatter | `9.baselines/tcn_validation_shift.png` | 5.10b | AUC × *class-prior shift* do TCN |
 
 ## Tabelas de resultados
 
@@ -315,3 +461,24 @@ Os CSVs brutos e agregados estão em `9.baselines/`:
 - `results_expanding_cv.csv` + `results_expanding_cv_fold_agg.csv` — Experimento 5.8
 - `results_vale3_deepdive.csv` — Experimento 5.9
 - `results_ablation.csv` + `ablation_summary.csv` — Experimento 5.10
+- `results_naive_baselines.csv` — Seção 5.3.1
+- `results_dimensionality_control.csv` — Seção 5.3.2
+- `results_horizon_sweep.csv` — Seção 5.9b
+- `results_power_analysis.csv` — Poder estatístico
+- `results_tcn_validation.csv` — Seção 5.10b
+
+## Referências
+
+ARACI, D. **FinBERT: Financial sentiment analysis with pre-trained language models**. arXiv preprint arXiv:1908.10063, 2019. Disponível em: https://arxiv.org/abs/1908.10063.
+
+BAILEY, D. H.; BORWEIN, J.; LÓPEZ DE PRADO, M.; ZHU, Q. J. Pseudo-mathematics and financial charlatanism: the effects of backtest overfitting on out-of-sample performance. **Notices of the American Mathematical Society**, v. 61, n. 5, p. 458–471, 2014.
+
+CAWLEY, G. C.; TALBOT, N. L. C. On over-fitting in model selection and subsequent selection bias in performance evaluation. **Journal of Machine Learning Research**, v. 11, p. 2079–2107, 2010.
+
+HANLEY, J. A.; McNEIL, B. J. The meaning and use of the area under a receiver operating characteristic (ROC) curve. **Radiology**, v. 143, n. 1, p. 29–36, 1982.
+
+FISCHER, T.; KRAUSS, C. Deep learning with long short-term memory networks for financial market predictions. **European Journal of Operational Research**, v. 270, n. 2, p. 654–669, 2018.
+
+LÓPEZ DE PRADO, M. **Advances in Financial Machine Learning**. Hoboken: Wiley, 2018.
+
+XU, Y.; COHEN, S. B. Stock movement prediction from tweets and historical prices. In: **Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (ACL 2018)**, v. 1, p. 1970–1979, 2018.

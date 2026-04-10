@@ -1,0 +1,6 @@
+cenario,N,balance,n1_pos,n0_neg,SE_nulo,MDE_alpha005_power80,ablacao_delta,ablacao_detectavel,transformer_delta,transformer_detectavel
+"Walk-forward (N=177, bal=0.69)",177,0.69,122,55,0.047,0.1317,0.003,False,-0.255,True
+"Walk-forward janelado (N=152, bal=0.76)",152,0.76,116,36,0.0553,0.1548,0.003,False,-0.255,True
+"Expanding-window fold (N=90, bal=0.60)",90,0.6,54,36,0.0625,0.175,0.003,False,-0.255,True
+"Expanding-window fold (N=60, bal=0.60)",60,0.6,36,24,0.0767,0.2149,0.003,False,-0.255,True
+"VALE3 deepdive fold (N=60, bal=0.65)",60,0.65,39,21,0.0788,0.2207,0.003,False,-0.255,True
