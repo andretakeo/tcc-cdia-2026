@@ -142,7 +142,7 @@ The central contribution is an empirical demonstration, on Brazilian data, of ho
     \item[OHLCV] \textit{Open, High, Low, Close, Volume}
     \item[PCA] Análise de Componentes Principais
     \item[ROC] \textit{Receiver Operating Characteristic}
-    \item[SHAP] \textit{SHapley Additive exPlanations}
+    \item[SHAP] \textit{SHapley Additive exPlanations} \cite{lundberg2017}
     \item[TCN] \textit{Temporal Convolutional Network}
     \item[XGB] XGBoost (\textit{eXtreme Gradient Boosting})
 \end{siglas}
@@ -215,7 +215,7 @@ A tensão entre eficiência teórica e previsibilidade empírica é o pano de fu
 
 A aplicação de processamento de linguagem natural à predição de preços passou por três gerações de representação textual. A primeira utilizou léxicos de sentimento construídos manualmente, como o Loughran-McDonald \cite{loughran2011}, atribuindo polaridade a palavras individuais. A segunda introduziu \textit{embeddings} densos baseados em redes neurais, como Word2Vec e GloVe, que capturam relações semânticas mas não são específicos ao domínio financeiro. A terceira geração, atual, utiliza modelos de linguagem pré-treinados e \textit{fine-tuned} para o domínio, como o FinBERT \cite{araci2019} e suas variantes regionais, incluindo o FinBERT-PT-BR para português brasileiro \cite{souza2023}.
 
-É importante notar que resultados nulos ou negativos são sub-representados na literatura de NLP financeiro devido ao viés de publicação. \citeonline{shah2018} documentaram que muitos estudos de \textit{sentiment analysis} para previsão de ações não replicam quando avaliados fora da amostra original. \citeonline{kellyxiu2023} mostraram que a maior parte do poder preditivo de variáveis textuais desaparece quando se controla adequadamente por \textit{features} de preço --- resultado alinhado com os achados deste trabalho.
+É importante notar que resultados nulos ou negativos são sub-representados na literatura de NLP financeiro devido ao viés de publicação. \citeonline{shah2019} documentaram que muitos estudos de \textit{sentiment analysis} para previsão de ações não replicam quando avaliados fora da amostra original. \citeonline{kellyxiu2023} mostraram que a maior parte do poder preditivo de variáveis textuais desaparece quando se controla adequadamente por \textit{features} de preço --- resultado alinhado com os achados deste trabalho.
 
 \citeonline{xu2018} demonstraram que a combinação de texto de \textit{tweets} com séries históricas de preço melhora a predição de direção em ações do S\&P~500, utilizando um modelo de atenção hierárquico. \citeonline{fischer2018} aplicaram LSTMs (\textit{Long Short-Term Memory}, proposta originalmente por \citeonline{hochreiter1997}) à predição de retornos diários de ações do S\&P~500, reportando resultados superiores ao \textit{buy-and-hold} em períodos específicos. No contexto brasileiro, \citeonline{cavalcante2016} utilizaram análise de sentimento de notícias em português para predição de volatilidade do IBOVESPA, e \citeonline{santos2020} aplicaram modelos BERT a textos financeiros da CVM.
 
