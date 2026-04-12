@@ -1,4 +1,0 @@
-modelo,descricao,auc,auc_ci_lower,auc_ci_upper,auc_str,accuracy,f1_pos,f1_neg,n_test,class_balance
-Classe majoritária,Sempre prevê P(sobe)=1.0,0.5,0.5,0.5,"0.500 [0.500, 0.500]",0.6923076923076923,0.8181818181818182,0.0,182,0.6923076923076923
-Coin flip ponderado,Prevê P(sobe)=prior_treino=0.5699 para toda amostra,0.5,0.5,0.5,"0.500 [0.500, 0.500]",0.6923076923076923,0.8181818181818182,0.0,182,0.6923076923076923
-Persistência,Direção prevista = direção dos últimos 21 dias,0.4742063492063492,0.40510572139303486,0.5434433736825187,"0.474 [0.405, 0.543]",0.5604395604395604,0.6875,0.25925925925925924,182,0.6923076923076923

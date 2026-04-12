@@ -1,3 +1,0 @@
-model,auc_mean,auc_std,auc_median,auc_min,auc_max,prec_down_mean,prec_down_std,recall_down_mean,n_down_mean
-baseline_xgb,0.641,0.012,0.638,0.615,0.66,0.313,0.002,0.993,177.4
-transformer_finbert,0.686,0.261,0.802,0.08,0.931,0.177,0.253,0.433,63.2
