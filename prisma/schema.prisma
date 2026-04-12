@@ -1,0 +1,102 @@
+// This is your Prisma schema file for SQLite Development
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. Entidades de Mercado
+// ==========================================
+
+model Ticker {
+  symbol      String       @id // ex: 'ITUB4.SA'
+  companyName String
+  sector      String?
+  marketData  MarketData[]
+  articles    Article[]
+  sentiments  SentimentAnalysis[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model MarketData {
+  id          String   @id @default(uuid())
+  tickerId    String
+  ticker      Ticker   @relation(fields: [tickerId], references: [symbol], onDelete: Cascade)
+  
+  // O 'tradingDate' é crucial. Ele representa o dia útil de referência.
+  tradingDate DateTime
+  
+  open        Float
+  high        Float
+  low         Float
+  close       Float
+  volume      BigInt
+  
+  // Features pré-calculadas para agilizar a inferência do modelo
+  logReturn   Float?
+  volatility  Float? // Proxy (ex: desvio padrão 21 dias)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([tickerId, tradingDate])
+}
+
+// ==========================================
+// 2. Entidades de Texto & Inferência (Pipeline em Cascata)
+// ==========================================
+
+model Article {
+  id              String   @id @default(uuid())
+  sourceUrl       String   @unique
+  sourceName      String   
+  title           String
+  content         String   
+  
+  publishedAt     DateTime 
+  referenceTradingDate DateTime
+
+  tickers         Ticker[]
+  sentiment       SentimentAnalysis?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SentimentAnalysis {
+  id               String   @id @default(uuid())
+  
+  articleId        String   @unique
+  article          Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  
+  tickerId         String
+  ticker           Ticker   @relation(fields: [tickerId], references: [symbol], onDelete: Cascade)
+
+  // -- Resultados da Fase 1: Triagem (gpt-4o-mini) --
+  isPriceSensitive Boolean  
+  relevanceScore   Float    
+  relevanceReason  String   
+
+  // -- Resultados da Fase 2: Extração Profunda (gpt-4o) --
+  sentimentClass   String?  
+  sentimentScore   Float?   
+  entities         String?  
+  keyTakeaway      String?  
+
+  createdAt        DateTime @default(now())
+}
+
+model ScrapeLog {
+  id          String   @id @default(uuid())
+  tickerId    String
+  source      String
+  executedAt  DateTime @default(now())
+  status      String   // SUCCESS, SKIPPED, ERROR
+}

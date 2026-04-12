@@ -234,3 +234,12 @@ embeddings_cache.npz
 *.toc
 *.out
 *.synctex.gz
+
+# pnpm and Monorepo
+node_modules
+.pnpm-debug.log
+.turbo
+
+# Next.js build output
+.next/
+out/
