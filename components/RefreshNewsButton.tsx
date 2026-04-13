@@ -1,48 +1,55 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCcw } from "lucide-react";
+import { RefreshCcw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function RefreshNewsButton() {
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleRefresh() {
-    setLoading(true);
+    setStatus("loading");
     setMessage(null);
     try {
-      const response = await fetch("http://localhost:3002/api/scrape", {
-        method: "POST",
-      });
+      const response = await fetch("/api/scrape", { method: "POST" });
       const data = await response.json();
       
       if (response.ok) {
-        setMessage(`Sucesso! ${data.stats.processed} notícias novas.`);
-        window.location.reload(); // Recarregar para ver as novidades
+        setStatus("success");
+        setTimeout(() => window.location.reload(), 1500);
       } else {
-        setMessage(data.message || "Erro ao atualizar.");
+        setStatus("error");
+        setMessage(data.message || "Erro.");
       }
     } catch (error) {
-      setMessage("Erro de conexão com o scraper.");
-    } finally {
-      setLoading(false);
+      setStatus("error");
+      setMessage("Conexão falhou.");
     }
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <button
+    <div className="relative">
+      <Button
         onClick={handleRefresh}
-        disabled={loading}
-        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+        disabled={status === "loading"}
+        variant={status === "success" ? "secondary" : "default"}
+        className="gap-2"
       >
-        <RefreshCcw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        {loading ? "Atualizando..." : "Atualizar Notícias"}
-      </button>
+        {status === "loading" ? (
+          <RefreshCcw className="w-4 h-4 animate-spin" />
+        ) : status === "success" ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+        ) : (
+          <RefreshCcw className="w-4 h-4" />
+        )}
+        {status === "loading" ? "Triando Notícias..." : "Atualizar Sinal"}
+      </Button>
+      
       {message && (
-        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-          {message}
-        </span>
+        <div className="absolute top-full mt-2 right-0 bg-destructive/10 text-destructive text-[10px] px-2 py-1 rounded border border-destructive/20 whitespace-nowrap flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" /> {message}
+        </div>
       )}
     </div>
   );

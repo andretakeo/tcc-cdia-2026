@@ -80,7 +80,7 @@ model SentimentAnalysis {
   ticker           Ticker   @relation(fields: [tickerId], references: [symbol], onDelete: Cascade)
 
   // -- Resultados da Fase 1: Triagem (gpt-4o-mini) --
-  isPriceSensitive Boolean  
+  isRelevant       Boolean  
   relevanceScore   Float    
   relevanceReason  String   
 
